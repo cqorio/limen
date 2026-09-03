@@ -1,0 +1,104 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest:*)",
+      "Bash(python3 -m pytest:*)",
+      "Bash(pytest:*)",
+      "Bash(python examples/:*)",
+      "Bash(pip install:*)",
+      "Bash(node --experimental-strip-types:*)",
+      "Bash(npm test:*)",
+      "Bash(agent-browser:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/devils-advocate-stop.sh",
+            "statusMessage": "Running devil's advocate review..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Grep",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/precious/.local/bin/graphify hook-guard search"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/precious/.local/bin/graphify hook-guard read"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ponytail-gate.py gate"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'ponytail: code was just written. Before committing run /ponytail-review on the diff. Mark any deliberate shortcut with a ponytail: comment naming its ceiling.'",
+            "statusMessage": "ponytail check"
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/ponytail-gate.py record"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'graphify: this repo has a knowledge graph at graphify-out/graph.json. For any codebase question run: graphify query \"<question>\"  (also: graphify path \"A\" \"B\" | graphify explain \"X\" | graphify affected \"X\") FIRST. After changing code run: graphify update .'"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '%s\\n' 'graphify: this repo has a knowledge graph at graphify-out/graph.json. Run: graphify query \"<question>\" FIRST. After changing code: graphify update .'"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "ponytail@ponytail": true
+  }
+}

@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "limen"
+version = "0.1.0"
+description = "Lightweight, modular abuse-defense engine for your API: toggleable guards, shadow/enforce modes, zero core deps."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["security", "rate-limiting", "abuse", "bot-detection", "enumeration", "fastapi"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+dependencies = []  # the core is stdlib-only
+
+[project.optional-dependencies]
+redis = ["redis>=4.2"]
+fastapi = ["starlette>=0.27"]
+dev = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/your-org/limen"
+Repository = "https://github.com/your-org/limen"
+Issues = "https://github.com/your-org/limen/issues"
+
+[tool.setuptools.packages.find]
+include = ["limen*"]
+
+[tool.setuptools.package-data]
+limen = ["py.typed"]

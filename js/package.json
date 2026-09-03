@@ -1,0 +1,11 @@
+{
+  "name": "@limen/proxy",
+  "version": "0.1.0",
+  "description": "Edge / Next.js proxy adapter for Limen: build a RequestContext from a request and apply a Decision.",
+  "type": "module",
+  "license": "MIT",
+  "files": ["src"],
+  "scripts": {
+    "test": "node --experimental-strip-types test/proxyGuard.test.ts"
+  }
+}

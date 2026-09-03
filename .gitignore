@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+
+# graphify knowledge graph (generated; rebuild with `graphify .`)
+graphify-out/
+
+# OS / editors
+.DS_Store
+*.swp
