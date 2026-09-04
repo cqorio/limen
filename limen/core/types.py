@@ -47,6 +47,10 @@ class RequestContext:
     account_id: str | None = None         # resolved tenant/account, or None when unauthenticated
     auth_kind: str | None = None          # "session" | "apikey" | None
     referer: str | None = None
+    # True ONLY when `ip` came from a source that cannot be spoofed (a locked edge that sets it + a proxy that
+    # strips client-supplied copies). Default False. Gate an IP-based `exempt` on this so a spoofed header can
+    # never satisfy the bypass: `exempt=lambda ctx: ctx.ip_trusted and ctx.ip in TRUSTED`.
+    ip_trusted: bool = False
     ts: float = field(default_factory=time.time)
 
     @property

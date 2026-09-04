@@ -1,6 +1,8 @@
 """``Limen`` — the one object most users need. Holds your Store + config; call it per request."""
 from __future__ import annotations
 
+from typing import Callable
+
 from .core.config import EngineConfig
 from .core.engine import Engine
 from .core.guard import REGISTRY, Registry
@@ -27,10 +29,11 @@ class Limen:
         store: Store,
         config: EngineConfig | dict[str, Mode | str] | None = None,
         registry: Registry = REGISTRY,
+        exempt: Callable[[RequestContext], bool] | None = None,
     ) -> None:
         cfg = config if isinstance(config, EngineConfig) else EngineConfig.from_dict(config)
         self._store = store
-        self._engine = Engine(registry, cfg)
+        self._engine = Engine(registry, cfg, exempt=exempt)
 
     def evaluate(self, ctx: RequestContext) -> Decision:
         """Run the enabled guards over `ctx` and return the aggregate Decision. Call PRE-request

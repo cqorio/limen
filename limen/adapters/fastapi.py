@@ -31,13 +31,23 @@ class LimenMiddleware(BaseHTTPMiddleware):
     back to the socket peer; without `identity` the request is treated as unauthenticated."""
 
     def __init__(
-        self, app: Any, limen: Limen, client_ip: Any = None, identity: Any = None, tarpit_seconds: float = 1.0
+        self,
+        app: Any,
+        limen: Limen,
+        client_ip: Any = None,
+        identity: Any = None,
+        tarpit_seconds: float = 1.0,
+        client_ip_trusted: bool = False,
     ) -> None:
         super().__init__(app)
         self.limen = limen
         self.client_ip = client_ip
         self.identity = identity
         self.tarpit_seconds = tarpit_seconds
+        # Assert True ONLY behind a locked edge that sets the client-IP header AND a proxy that strips
+        # spoofable copies. It stamps ctx.ip_trusted, which an IP-based `exempt` must gate on. Default False,
+        # so an IP-based exempt is inert until you deliberately vouch for your IP source.
+        self.client_ip_trusted = client_ip_trusted
 
     def _ctx(self, request: Request, status: int | None = None) -> RequestContext:
         ip = self.client_ip.resolve(request) if self.client_ip else (request.client.host if request.client else None)
@@ -49,6 +59,7 @@ class LimenMiddleware(BaseHTTPMiddleware):
             sec_fetch_site=request.headers.get("sec-fetch-site"),
             sec_fetch_mode=request.headers.get("sec-fetch-mode"),
             ip=ip,
+            ip_trusted=self.client_ip_trusted and ip is not None,
             account_id=account_id,
             auth_kind=auth_kind,
             referer=request.headers.get("referer"),

@@ -69,6 +69,30 @@ def test_a_raising_guard_fails_open():
     assert d.action is Action.ALERT  # boom swallowed, ok still applied
 
 
+def test_exempt_short_circuits_to_allow():
+    reg = Registry()
+    reg.register(Fixed("a", Action.BLOCK))  # would block
+    eng = Engine(reg, exempt=lambda ctx: ctx.ip == "9.9.9.9")
+    blocked = eng.evaluate(RequestContext(method="GET", path="/x", ip="1.1.1.1"), MemoryStore())
+    allowed = eng.evaluate(RequestContext(method="GET", path="/x", ip="9.9.9.9"), MemoryStore())
+    assert blocked.action is Action.BLOCK
+    assert allowed.action is Action.ALLOW and allowed.reasons == ("exempt",)
+
+
+def test_exempt_also_skips_observe_counting():
+    """An exempt request must not touch the store, so trusted traffic never inflates a guard's counters."""
+    from limen.guards.account_budget import AccountBudget
+
+    store = MemoryStore()
+    reg = Registry()
+    reg.register(AccountBudget(window_s=60, limit=1))
+    eng = Engine(reg, exempt=lambda ctx: ctx.ip_trusted)
+    for _ in range(5):
+        eng.evaluate(RequestContext(method="GET", path="/x", account_id="u1", ip="9.9.9.9", ip_trusted=True), store)
+    # exempt short-circuited before the budget guard incremented → the account's counter is untouched
+    assert store.get("limen:budget:u1") == 0
+
+
 class _BadStore:
     def incr(self, *a):
         raise RuntimeError("store down")

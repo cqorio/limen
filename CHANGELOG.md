@@ -5,6 +5,12 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Added
+- `exempt=` predicate on `Limen`/`Engine` — short-circuits trusted source traffic (e.g. your own scanner) to
+  ALLOW. It is a total bypass, so `RequestContext.ip_trusted` (stamped by `LimenMiddleware(client_ip_trusted=True)`,
+  default False) lets you gate an IP-based exempt so a spoofed header can never satisfy it; docs carry the warning.
+- `docs/integration.md` — a full FastAPI + Next.js integration walkthrough; `examples/fastapi_app.py` is now a
+  complete, runnable reference (Identity + ClientIP ports + exemption), not a bare wiring snippet.
 
 ## [0.1.0] - 2026-09-04
 

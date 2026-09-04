@@ -83,12 +83,54 @@ class NoReferer(Guard):
 
 That's it — it's now in the registry. See `examples/custom_guard.py`.
 
+## Integration
+
+**[docs/integration.md](docs/integration.md)** is the full walkthrough for wiring Limen into a real app
+(a FastAPI backend + a Next.js proxy). The short version — four decisions:
+
+```python
+from fastapi import FastAPI
+from limen import Limen, Mode
+from limen.adapters import RedisStore, LimenMiddleware
+
+class Identity:   # who is this? -> (account_id, auth_kind)
+    def resolve(self, request):
+        tok = read_session_cookie(request)
+        return (account_id_from(tok), "session") if tok else (None, None)
+
+class ClientIP:   # the trusted client IP, or None
+    def resolve(self, request):
+        return request.headers.get("cf-connecting-ip")
+
+app = FastAPI()
+limen = Limen(
+    RedisStore(url="redis://localhost"),                 # 1. store (Redis for multi-worker)
+    config={"enumeration": Mode.ENFORCE,                 # 4. guards + modes (shadow-first)
+            "account_budget": Mode.ENFORCE,
+            "sequence_anomaly": Mode.SHADOW},
+    exempt=lambda ctx: ctx.ip_trusted and ctx.ip in TRUSTED_SCANNER_IPS,  # skip your own scanner
+)
+app.add_middleware(LimenMiddleware, limen=limen, client_ip=ClientIP(), identity=Identity(),
+                   client_ip_trusted=True)  # 2 & 3 — set client_ip_trusted True ONLY behind a locked edge
+```
+
+> An IP `exempt` is a **total bypass** and only as safe as your IP source: gate it on `ctx.ip_trusted`
+> (stamped by `client_ip_trusted=True`, which you set only when a locked edge provides an unspoofable IP),
+> or a spoofed header turns Limen off. See [the guide](docs/integration.md#exempting-trusted-traffic-your-own-scanner-a-partner).
+
+That's the whole integration: one middleware, two small ports (`Identity`, `ClientIP`), a store, and your guard
+config. `examples/fastapi_app.py` is a runnable version.
+
 ## Adapters
 
-- `limen.adapters.MemoryStore` — thread-safe, in-process (single process / tests).
+- `limen.adapters.MemoryStore` — thread-safe, in-process; periodic purge bounds memory (single process / tests).
 - `limen.adapters.RedisStore` — shared across workers/replicas (`limen[redis]`).
-- `limen.adapters.LimenMiddleware` — FastAPI/Starlette; enforces pre-request, observes post-response (`limen[fastapi]`). See `examples/fastapi_app.py`.
+- `limen.adapters.LimenMiddleware` — FastAPI/Starlette; enforces pre-request (BLOCK→403, CHALLENGE→429, TARPIT→`tarpit_seconds` delay), observes post-response (`limen[fastapi]`).
 - `@limen/proxy` (in `js/`) — Next.js/edge helper: `buildContext(request)` + `applyDecision(decision)`. See `examples/nextjs_proxy.md`.
+
+`Limen(store, config=..., registry=..., exempt=...)`: `config` sets per-guard modes; a custom `registry` sets
+thresholds / path scoping / canaries; `exempt(ctx)` short-circuits to ALLOW (gate any IP-based exempt on
+`ctx.ip_trusted` — see the guide's warning).
 
 ## Design principles
 

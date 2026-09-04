@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Callable
 
 from .config import EngineConfig
 from .guard import REGISTRY, Registry
@@ -14,13 +15,26 @@ log = logging.getLogger("limen")
 class Engine:
     """Iterates the registry, respects each guard's effective mode, and aggregates. Pure: it takes a
     ``RequestContext`` and a ``Store`` and returns a ``Decision`` — no framework, no globals beyond the
-    registry you pass. Fast: O(enabled guards), each guard doing O(1) store work."""
+    registry you pass. Fast: O(enabled guards), each guard doing O(1) store work.
 
-    def __init__(self, registry: Registry = REGISTRY, config: EngineConfig | None = None) -> None:
+    ``exempt`` short-circuits to ALLOW before any guard runs (a TOTAL bypass — skips every guard). Use it for
+    trusted source traffic (your own scanner). DANGER: an IP-based exempt is only as safe as your IP source —
+    gate it on ``ctx.ip_trusted`` (``exempt=lambda ctx: ctx.ip_trusted and ctx.ip in TRUSTED``) or a spoofed
+    header turns Limen off entirely. See docs/integration.md."""
+
+    def __init__(
+        self,
+        registry: Registry = REGISTRY,
+        config: EngineConfig | None = None,
+        exempt: Callable[[RequestContext], bool] | None = None,
+    ) -> None:
         self.registry = registry
         self.config = config or EngineConfig()
+        self.exempt = exempt
 
     def evaluate(self, ctx: RequestContext, store: Store) -> Decision:
+        if self.exempt is not None and self.exempt(ctx):
+            return Decision(action=Action.ALLOW, reasons=("exempt",))
         action = Action.ALLOW
         score = 0.0
         reasons: list[str] = []
