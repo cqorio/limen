@@ -35,7 +35,7 @@ TRUSTED_SCANNER_IPS = {"203.0.113.7"}  # your own crawler's egress IPs — never
 app = FastAPI()
 limen = Limen(
     MemoryStore(),
-    config={"enumeration": Mode.ENFORCE, "account_budget": Mode.ENFORCE, "sequence_anomaly": Mode.SHADOW},
+    config={"enumeration": Mode.ENFORCE, "rate_limit": Mode.ENFORCE, "sequence_anomaly": Mode.SHADOW},
     # `ctx.ip_trusted` gates the bypass: with client_ip_trusted=False below, this is inert, so copying this
     # example is NEVER a bypass. An attacker spoofing cf-connecting-ip cannot satisfy it.
     exempt=lambda ctx: ctx.ip_trusted and ctx.ip in TRUSTED_SCANNER_IPS,
