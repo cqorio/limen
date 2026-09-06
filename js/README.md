@@ -9,7 +9,7 @@ import { buildContext, applyDecision } from "@limen/proxy";
 
 const ctx = buildContext(request, { ip, account_id, auth_kind });
 const decision = await askLimen(ctx);        // your call to the Python engine
-const early = applyDecision(decision);       // 403 on BLOCK, 429 on CHALLENGE, else null
+const early = applyDecision(decision);       // 403 on BLOCK, 401 on CHALLENGE, else null
 if (early) return early;
 ```
 
