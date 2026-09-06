@@ -4,11 +4,14 @@ Add a guard: drop a module here, subclass ``Guard`` + ``@register``, import it b
 ``tests/guards/test_<name>.py`` (the registry-integrity test requires the test file to exist).
 """
 from . import (  # noqa: F401
-    account_budget,
+    denylist,
     enumeration,
     honeytoken,
+    impossible_travel,
+    rate_limit,
     sec_fetch,
     sequence_anomaly,
+    step_up,
     timing,
     watermark,
 )
