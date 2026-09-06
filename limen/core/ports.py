@@ -51,3 +51,37 @@ class Identity(Protocol):
     browser traffic differently from programmatic API-key traffic."""
 
     def resolve(self, request: Any) -> tuple[str | None, str | None]: ...
+
+
+@runtime_checkable
+class Observer(Protocol):
+    """A sink for decisions: the facade calls ``observe(ctx, decision)`` once per enforcing evaluate, so you
+    can log/audit/graph what Limen did. Implementations must be cheap (it is on the request path) and should
+    not raise (the facade guards the call anyway). See ``limen.adapters`` for ready-made sinks.
+
+    ``respects_relevance`` (class attribute, default True) controls whether the facade's global
+    ``log_relevance`` switch applies: LOG sinks leave it True (so a plain ALLOW is skipped under
+    ``"relevant_only"``); a METRICS sink sets it False so it counts EVERY decision (you need the ALLOW count as
+    the denominator for "% blocked")."""
+
+    respects_relevance: bool
+
+    def observe(self, ctx: Any, decision: Any) -> None: ...
+
+
+@runtime_checkable
+class Verifier(Protocol):
+    """Turn a human-verification token (from a captcha widget, an emailed code, an internal risk service) into
+    a bool. Injected into the middleware so a ``CHALLENGE`` can be satisfied. No vendor is baked in: implement
+    this in ~5 lines for your provider, use the bundled ``TurnstileVerifier``, or wire none at all."""
+
+    def verify(self, token: str) -> bool: ...
+
+
+@runtime_checkable
+class Geo(Protocol):
+    """Map an IP to a coarse region label (a country/continent code is plenty), or ``None`` when unknown.
+    Injected into the ``impossible_travel`` guard so Limen carries no geo-database dependency — wrap MaxMind,
+    an IP-info API, or a CDN's country header. The guard self-disables when this returns ``None``."""
+
+    def locate(self, ip: str) -> str | None: ...

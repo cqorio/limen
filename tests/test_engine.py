@@ -81,16 +81,16 @@ def test_exempt_short_circuits_to_allow():
 
 def test_exempt_also_skips_observe_counting():
     """An exempt request must not touch the store, so trusted traffic never inflates a guard's counters."""
-    from limen.guards.account_budget import AccountBudget
+    from limen.guards.rate_limit import RateLimit, by_account
 
     store = MemoryStore()
     reg = Registry()
-    reg.register(AccountBudget(window_s=60, limit=1))
+    reg.register(RateLimit(name="account_budget", key=by_account, limit=1, window_s=60, action=Action.TARPIT))
     eng = Engine(reg, exempt=lambda ctx: ctx.ip_trusted)
     for _ in range(5):
         eng.evaluate(RequestContext(method="GET", path="/x", account_id="u1", ip="9.9.9.9", ip_trusted=True), store)
-    # exempt short-circuited before the budget guard incremented → the account's counter is untouched
-    assert store.get("limen:budget:u1") == 0
+    # exempt short-circuited before the rate-limit guard incremented → the account's counter is untouched
+    assert store.get("limen:rl:account_budget:u1") == 0
 
 
 class _BadStore:
@@ -108,12 +108,12 @@ class _BadStore:
 
 
 def test_store_outage_fails_open():
-    from limen.guards.account_budget import AccountBudget
+    from limen.guards.rate_limit import RateLimit, by_account
 
     reg = Registry()
-    reg.register(AccountBudget(limit=0))  # would fire on every request if the store worked
+    reg.register(RateLimit(name="rl", key=by_account, limit=0, window_s=60))  # would fire every request
     d = Engine(reg).evaluate(RequestContext(method="GET", path="/x", account_id="u1"), _BadStore())
-    assert d.action is Action.ALLOW  # store raised → failed open, not a lockout
+    assert d.action is Action.ALLOW  # store raised → failed open (fail_closed defaults False), not a lockout
 
 
 class _Rogue(Guard):
@@ -130,3 +130,59 @@ def test_contract_violating_guard_fails_open():
     reg.register(Fixed("ok", Action.ALERT))
     d = Engine(reg).evaluate(_ctx(), MemoryStore())
     assert d.action is Action.ALERT  # rogue's bad return raised inside the guarded body → skipped
+
+
+# --- per-guard fail_closed (mode-aware) ---
+class BoomFailClosed(Guard):
+    name = "boom_fc"
+    default_mode = Mode.ENFORCE
+    fail_closed = True
+    action = Action.BLOCK
+
+    def evaluate(self, ctx, store):
+        raise RuntimeError("store down")
+
+
+def test_fail_closed_guard_denies_under_enforce():
+    reg = Registry()
+    reg.register(BoomFailClosed())
+    d = Engine(reg).evaluate(_ctx(), MemoryStore())
+    assert d.action is Action.BLOCK  # opted into fail-closed → denies its action on error
+    assert d.reasons
+
+
+def test_fail_closed_guard_in_shadow_does_not_change_action():
+    reg = Registry()
+    reg.register(BoomFailClosed())
+    d = Engine(reg, EngineConfig(modes={"boom_fc": Mode.SHADOW})).evaluate(_ctx(), MemoryStore())
+    assert d.action is Action.ALLOW  # shadow fail-closed is recorded, never enforced
+    assert d.shadow_reasons and not d.reasons
+
+
+# --- score-threshold aggregation (the risk spine) ---
+class Scorer(Guard):
+    def __init__(self, name, score):
+        self.name = name
+        self.default_mode = Mode.ENFORCE
+        self._score = score
+
+    def evaluate(self, ctx, store):
+        return Signal(Action.ALERT, self.name, "weak signal", score=self._score)
+
+
+def test_score_thresholds_combine_weak_signals_into_a_challenge():
+    reg = Registry()
+    for name in ("a", "b", "c"):
+        reg.register(Scorer(name, 6))  # 3 x 6 = 18; each alone only ALERTs
+    cfg = EngineConfig(score_thresholds=((15, Action.CHALLENGE), (5, Action.ALERT)))
+    d = Engine(reg, cfg).evaluate(_ctx(), MemoryStore())
+    assert d.score == 18
+    assert d.action is Action.CHALLENGE  # 18 >= 15 → CHALLENGE, though no single guard raised it
+
+
+def test_score_thresholds_ignore_shadow_scores():
+    reg = Registry()
+    reg.register(Scorer("a", 100))
+    cfg = EngineConfig(modes={"a": Mode.SHADOW}, score_thresholds=((15, Action.CHALLENGE),))
+    d = Engine(reg, cfg).evaluate(_ctx(), MemoryStore())
+    assert d.action is Action.ALLOW  # shadow score does not feed the threshold

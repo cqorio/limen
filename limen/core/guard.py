@@ -10,7 +10,7 @@ import re
 from abc import ABC, abstractmethod
 
 from .ports import Store
-from .types import Mode, RequestContext, Signal
+from .types import Action, Mode, RequestContext, Signal
 
 # path segments that look like ids (uuid, long hex, or all-digits) → collapsed so "/reports/{id}" groups.
 _ID_SEG = re.compile(r"^([0-9a-f]{8,}|[0-9a-f-]{16,}|\d+)$", re.IGNORECASE)
@@ -23,12 +23,21 @@ class Guard(ABC):
 
     name: str = ""
     default_mode: Mode = Mode.ENFORCE
+    # The action this guard deals in. Read by the engine ONLY on the fail-closed path (below), where there is
+    # no Signal to read it from. Guards that emit a single action set it (rate_limit, denylist, …); guards with
+    # no single action leave the BLOCK default (it is used only when `fail_closed` is True, so it never bites
+    # a fail-open guard). Base default here means `guard.action` is ALWAYS safe to read — see engine.evaluate.
+    action: Action = Action.BLOCK
+    # When True and this guard's `evaluate` RAISES (store outage, a bug), the engine denies with `action`
+    # instead of failing open — but only under ENFORCE (a SHADOW fail-closed records to shadow_reasons). Opt-in
+    # per guard; the DEFAULT is fail-OPEN, so a broken guard never locks users out unless you asked it to.
+    fail_closed: bool = False
 
     @abstractmethod
     def evaluate(self, ctx: RequestContext, store: Store) -> Signal | None:
         """Return a ``Signal`` to act, or ``None`` for "nothing to say / not my phase". Must not raise on
-        the normal path; the engine catches exceptions and fails OPEN, but a guard that raises every time
-        is silently disabled — keep it total."""
+        the normal path; the engine catches exceptions and fails OPEN (unless ``fail_closed``), but a guard
+        that raises every time is silently disabled — keep it total."""
 
     # --- shared helpers (available to every guard) ---
     @staticmethod

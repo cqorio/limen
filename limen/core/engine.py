@@ -44,8 +44,8 @@ class Engine:
             mode = self.config.mode_for(guard)
             if mode is Mode.OFF:
                 continue
-            # FAIL OPEN — a broken guard, a store outage, OR a guard that violates the Signal|None contract
-            # must never lock out a user. The whole body is guarded, not just evaluate().
+            # The WHOLE body is guarded (not just evaluate()) so a guard that violates the Signal|None
+            # contract also lands here rather than crashing the request.
             try:
                 signal = guard.evaluate(ctx, store)
                 if signal is None:
@@ -57,7 +57,22 @@ class Engine:
                 else:  # SHADOW — observed only, never changes the action
                     shadow.append(f"{signal.guard}: {signal.reason}")
             except Exception:
-                log.exception("limen guard %r failed; failing open", guard.name)
+                # DEFAULT is FAIL OPEN — a broken guard or store outage must never lock out a user. A guard
+                # that OPTED IN to `fail_closed` denies instead, but only under ENFORCE (a SHADOW fail-closed
+                # is recorded, never enforced). `action` has a safe base default on Guard, so this cannot raise.
+                fail_closed = getattr(guard, "fail_closed", False)
+                log.exception("limen guard %r failed; %s", guard.name, "fail-closed" if fail_closed else "failing open")
+                if fail_closed:
+                    reason = f"{guard.name}: fail-closed (guard error)"
+                    if mode is Mode.ENFORCE:
+                        action = max(action, getattr(guard, "action", Action.BLOCK))
+                        reasons.append(reason)
+                    else:  # SHADOW — record, do not enforce
+                        shadow.append(reason)
                 continue
+
+        # Risk spine: many weak ENFORCE-mode scores can combine into an action none raised alone.
+        if self.config.score_thresholds:
+            action = max(action, self.config.action_for_score(score))
 
         return Decision(action=action, score=score, reasons=tuple(reasons), shadow_reasons=tuple(shadow))
