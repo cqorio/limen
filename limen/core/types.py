@@ -2,6 +2,14 @@
 
 All frozen dataclasses (cheap, hashable, no accidental mutation on the hot path) and two small enums.
 `Action` is an ``IntEnum`` ordered by severity so aggregating many guards' signals is just ``max()``.
+
+    >>> from limen.core.types import Action, Decision, RequestContext
+    >>> Action.BLOCK > Action.ALLOW                 # ordered by severity → aggregate with max()
+    True
+    >>> Decision(action=Action.TARPIT).blocked      # tarpit/challenge/block all count as "blocked"
+    True
+    >>> RequestContext(method="GET", path="/x").is_pre_request   # no status yet = the enforce phase
+    True
 """
 from __future__ import annotations
 

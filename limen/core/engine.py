@@ -1,4 +1,12 @@
-"""The orchestrator: run the enabled guards over one request and reduce their signals to a Decision."""
+"""The orchestrator: run the enabled guards over one request and reduce their signals to a Decision.
+
+    >>> from limen.core.engine import Engine
+    >>> from limen.core.guard import Registry
+    >>> from limen.core.types import RequestContext
+    >>> from limen.adapters import MemoryStore
+    >>> Engine(Registry()).evaluate(RequestContext(method="GET", path="/x"), MemoryStore()).action.name
+    'ALLOW'
+"""
 from __future__ import annotations
 
 import logging

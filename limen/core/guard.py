@@ -3,6 +3,12 @@
 Add a defense = subclass ``Guard``, set ``name``, implement ``evaluate``, decorate with ``@register``.
 Nothing else in the codebase needs to change (the engine iterates the registry). This mirrors a plugin
 registry: one small, explicit, framework-free surface.
+
+    >>> from limen.core.guard import Guard
+    >>> Guard.path_template("/api/reports/6f3a9c2b1d4e/pdf")   # id segments collapse so routes group
+    '/api/reports/:id/pdf'
+    >>> Guard.under_any("/api/items/1", ("/api/items/", "/orders/"))
+    True
 """
 from __future__ import annotations
 

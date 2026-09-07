@@ -1,4 +1,15 @@
-"""Per-guard on/off/shadow/enforce configuration, plus optional score-threshold aggregation."""
+"""Per-guard on/off/shadow/enforce configuration, plus optional score-threshold aggregation.
+
+    >>> from limen.core.config import EngineConfig
+    >>> from limen.core.types import Action
+    >>> cfg = EngineConfig(score_thresholds=((15, Action.CHALLENGE), (5, Action.ALERT)))
+    >>> cfg.action_for_score(18).name    # many weak signals summing past 15 → CHALLENGE
+    'CHALLENGE'
+    >>> cfg.action_for_score(6).name
+    'ALERT'
+    >>> cfg.action_for_score(2).name     # below every threshold
+    'ALLOW'
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass, field

@@ -2,6 +2,13 @@
 
 ``redis`` is imported lazily (only when constructing the default client), so this module is importable — and
 unit-testable with a fake client — without the extra installed.
+
+Usage (needs a running Redis, so shown as a snippet rather than a doctest)::
+
+    from limen import Limen
+    from limen.adapters import RedisStore
+    limen = Limen(RedisStore(url="redis://localhost:6379/0"))   # counters shared across all workers
+    # or inject an existing client: RedisStore(client=my_redis)
 """
 from __future__ import annotations
 
