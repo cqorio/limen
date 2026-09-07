@@ -1,8 +1,19 @@
 """The pluggable dependencies Limen needs, as structural ``typing.Protocol``s.
 
 Structural (not ABCs) on purpose: you inject your OWN implementation — wrap your existing Redis client,
-your reverse-proxy's client-IP logic, your session/JWT decoder — without inheriting anything of ours.
-A type that has the right methods IS a valid port. `limen.adapters` ships ready-made ones.
+your reverse-proxy's client-IP logic, your session/JWT decoder, your captcha SDK — without inheriting anything
+of ours. A type that has the right methods IS a valid port. ``limen.adapters`` ships ready-made ones.
+
+ABC-vs-Protocol rule: things you WRAP (something you already own) are Protocols here (``Store``, ``ClientIP``,
+``Identity``, ``Verifier``, ``Geo``); things you AUTHOR for Limen, with shared behavior to inherit, are ABCs
+(``Guard`` in ``guard.py``, ``Observer`` in ``observer.py``).
+
+You implement a port by writing a class with the right method — no inheritance (shown as a snippet because a
+real one needs your framework's request object)::
+
+    class ClientIP:
+        def resolve(self, request):
+            return request.headers.get("cf-connecting-ip")   # trusted ONLY behind a locked edge
 """
 from __future__ import annotations
 
@@ -51,3 +62,21 @@ class Identity(Protocol):
     browser traffic differently from programmatic API-key traffic."""
 
     def resolve(self, request: Any) -> tuple[str | None, str | None]: ...
+
+
+@runtime_checkable
+class Verifier(Protocol):
+    """Turn a human-verification token (from a captcha widget, an emailed code, an internal risk service) into
+    a bool. Injected into the middleware so a ``CHALLENGE`` can be satisfied. No vendor is baked in: implement
+    this in ~5 lines for your provider, use the bundled ``TurnstileVerifier``, or wire none at all."""
+
+    def verify(self, token: str) -> bool: ...
+
+
+@runtime_checkable
+class Geo(Protocol):
+    """Map an IP to a coarse region label (a country/continent code is plenty), or ``None`` when unknown.
+    Injected into the ``impossible_travel`` guard so Limen carries no geo-database dependency — wrap MaxMind,
+    an IP-info API, or a CDN's country header. The guard self-disables when this returns ``None``."""
+
+    def locate(self, ip: str) -> str | None: ...

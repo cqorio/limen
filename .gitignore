@@ -17,6 +17,9 @@ node_modules/
 # graphify knowledge graph (generated; rebuild with `graphify .`)
 graphify-out/
 
+# local Claude Code / dev harness (machine-specific hooks + settings; not part of the library)
+.claude/
+
 # OS / editors
 .DS_Store
 *.swp

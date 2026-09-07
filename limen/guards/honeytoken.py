@@ -1,9 +1,39 @@
-"""Honeytoken guard: access to a canary path is a high-confidence alarm.
+"""Honeytoken — a hit on a secret canary path nobody should know about is a near-certain alarm.
 
-Configure ``paths`` with canary routes/ids that NO legitimate UI ever surfaces — random and unlinked, so only a
-targeted enumerator (never a link-follower or your own scanner probing dictionary paths) reaches them. Any hit
-returns ``action`` (default BLOCK), and the reason carries the caller for attribution. No-op until you configure
-canaries, so ENFORCE-by-default is safe.
+WHAT IT DETECTS & WHY IT MATTERS
+    Plant a route or id that NO legitimate UI ever links or surfaces. A real user can never reach it; only
+    someone poking at your API by hand or from a leaked internal reference does. So unlike a heuristic, a hit
+    is high-confidence malice — one of the few signals worth a hard BLOCK on the first occurrence.
+
+HOW IT DECIDES
+    Exact-match the request path against your configured ``paths`` (random, unlinked canaries). Any match
+    emits ``action`` (default BLOCK); the reason carries the caller (ip/account) for attribution. It is a
+    no-op until you configure canaries, so ENFORCE-by-default is safe out of the box.
+
+EXAMPLE
+    >>> from limen.adapters import MemoryStore
+    >>> from limen.guards.honeytoken import Honeytoken
+    >>> from limen.core.types import RequestContext, Action
+    >>> g = Honeytoken(paths=("/api/__canary_9f3a__",))
+    >>> g.evaluate(RequestContext(method="GET", path="/api/__canary_9f3a__", ip="6.6.6.6"), MemoryStore()).action
+    <Action.BLOCK: 4>
+    >>> g.evaluate(RequestContext(method="GET", path="/api/real", ip="6.6.6.6"), MemoryStore()) is None
+    True
+
+TUNING
+    ``paths``: the canaries. Make them RANDOM and unlinked (``/api/reports/__canary_9f3a7c__``), never
+    guessable dictionary words a scanner would try anyway, or you get false alarms. ``action``: BLOCK, or
+    ALERT if you would rather silently watch who found it.
+
+FALSE POSITIVES
+    Essentially none IF the canary is truly unlinked and random. A poorly chosen (guessable) path a generic
+    scanner probes will fire on non-targeted bots — choose obscure values.
+
+WHAT IT DOES NOT CATCH
+    Anything that never touches a canary. It is a tripwire, not coverage; pair it with the detection guards.
+
+STORE KEYS & COST
+    None — a set membership check. O(1), no store access.
 """
 from __future__ import annotations
 

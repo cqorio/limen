@@ -1,31 +1,41 @@
 # Limen
 
+[![CI](https://github.com/cqorio/limen/actions/workflows/ci.yml/badge.svg)](https://github.com/cqorio/limen/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 > A lightweight, modular abuse-defense engine for your API. *Limen* is Latin for "threshold": it decides what
 > crosses yours.
 
-A small registry of independently toggleable **guards** (enumeration, per-account budget, sequence-anomaly, …)
+A small registry of independently toggleable **guards** (rate limiting, enumeration, CSRF, impossible-travel, …)
 run by one fast **engine**, each with an **off / shadow / enforce** mode so you can roll a defense out safely.
 **Zero required dependencies** — the core is pure standard library; bring your own store (in-memory ships built
 in, Redis is an optional extra).
 
 Limen is **defense-in-depth, not a WAF replacement**. It shines *behind* your edge, where you know the account
-and the request shape: catching a scraper on one account, an id-enumerator, a session behaving like a script.
+and the request shape: catching a scraper on one account, an id-enumerator, a session behaving like a script,
+a cross-site write, a stolen session hopping continents.
 
 ## Install
 
+Not yet on PyPI — install from GitHub, pinning a release tag for a stable version:
+
 ```bash
-pip install limen                 # core, no dependencies
-pip install 'limen[redis]'        # + Redis-backed shared store
-pip install 'limen[fastapi]'      # + FastAPI/Starlette middleware
+pip install "limen @ git+https://github.com/cqorio/limen@v1.0.0"                    # core, no dependencies
+pip install "limen[redis,fastapi] @ git+https://github.com/cqorio/limen@v1.0.0"     # with optional extras
 ```
+
+Optional extras (stackable): `redis` (shared store), `fastapi` (middleware), `prometheus` (metrics sink),
+`sentry` (alerts). The core itself has zero required dependencies.
 
 ## Quickstart
 
 ```python
 from limen import Limen, RequestContext, Mode
-from limen.adapters import MemoryStore
+from limen.adapters import MemoryStore, LoggingObserver
 
-limen = Limen(MemoryStore(), config={"sequence_anomaly": Mode.SHADOW})
+limen = Limen(MemoryStore(),
+              config={"sequence_anomaly": Mode.SHADOW},
+              observer=LoggingObserver())     # see what it decides
 
 decision = limen.evaluate(RequestContext(
     method="GET", path="/api/reports/abc",
@@ -42,11 +52,12 @@ if decision.blocked:
 - **Mode** — per guard: `OFF` (never runs), `SHADOW` (evaluated and logged, never affects the outcome),
   `ENFORCE` (can raise the decision's action). Roll new guards out in `SHADOW`, watch, then `ENFORCE`.
 - **Engine** — runs the enabled guards over one `RequestContext` and reduces their signals to a `Decision`
-  (the most severe `Action` wins). It **fails open**: a broken guard or a store outage is logged and skipped,
-  never a lockout.
-- **Ports** — the dependencies you inject (structural, no inheritance): `Store` (counters + kv), `ClientIP`
-  (trusted client IP, or `None`), `Identity` (account id + auth kind). Guards keyed on IP self-disable when
-  there is no trusted IP, so per-account rules keep working without a WAF in front.
+  (the most severe `Action` wins; optional score thresholds combine weak signals). It **fails open** by
+  default: a broken guard or a store outage is logged and skipped, never a lockout. A guard can opt into
+  `fail_closed` to deny instead (per-guard, ENFORCE-only).
+- **Ports** — the dependencies you inject (structural, no inheritance): `Store` (counters + kv), `ClientIP`,
+  `Identity`, plus `Observer` (decision sink), `Verifier` (challenge), `Geo` (region lookup). Guards keyed on
+  IP self-disable when there is no trusted IP, so per-account rules keep working without a WAF in front.
 
 **Actions**, least to most severe: `ALLOW < ALERT < TARPIT < CHALLENGE < BLOCK`.
 
@@ -54,17 +65,22 @@ if decision.blocked:
 
 | name | what it catches | default mode |
 |---|---|---|
+| `rate_limit` | too many requests from one caller — key it on IP / account / endpoint / global / composite | ENFORCE (opt-in, see below) |
 | `enumeration` | an IP racking up not-found responses (id/endpoint guessing) | ENFORCE |
-| `account_budget` | one authenticated account pulling far more than a human would | ENFORCE |
 | `sequence_anomaly` | a browser session pounding one endpoint with no page fan-out | SHADOW |
-| `sec_fetch` | a cookie-session API call from a cross-site context (not your page) | SHADOW |
+| `sec_fetch` | a cross-site cookie-session call; with `methods=` also a CSRF guard on writes | SHADOW |
 | `timing` | metronomic, near-constant request intervals (a bot's signature) | SHADOW |
+| `denylist` | accounts or IPs you have already judged bad (static or store-backed) | ENFORCE |
 | `honeytoken` | access to a configured canary path/id no legitimate UI surfaces | ENFORCE |
+| `impossible_travel` | one account seen from two regions too fast (needs a `Geo` port) | SHADOW |
+| `step_up` | sensitive paths require a recent re-auth marker | ENFORCE |
 | `watermark` | passive: emits a per-account HMAC tag for leak attribution (never blocks) | SHADOW |
 
-`account_budget` defaults to `TARPIT` (serve, but slowly); the bundled `LimenMiddleware` honours it with a
-configurable `tarpit_seconds` delay. `honeytoken` and `watermark` are no-ops until you configure canary paths /
-a secret, so their `ENFORCE`/`SHADOW` defaults are safe out of the box.
+`rate_limit` is the one guard NOT auto-registered — a rate limit has no meaningful zero-config default (a limit
+is a number, a key is a choice), so you instantiate the buckets you want in your own registry (see
+`docs/recipes.md`). `denylist`, `honeytoken`, `impossible_travel`, `step_up` are no-ops until you configure them,
+so their ENFORCE defaults are safe out of the box. Every guard's module docstring is a full reference (what it
+detects, the decision math, a runnable example, tuning, false positives, and what it does NOT catch).
 
 ## Write your own guard
 
@@ -83,61 +99,62 @@ class NoReferer(Guard):
 
 That's it — it's now in the registry. See `examples/custom_guard.py`.
 
-## Integration
+## Seeing what it does (observability)
 
-**[docs/integration.md](docs/integration.md)** is the full walkthrough for wiring Limen into a real app
-(a FastAPI backend + a Next.js proxy). The short version — four decisions:
+Two layers, kept separate (see `docs/integration.md`):
+
+- **Operational logs** — is the engine healthy? Standard-library logging, **silent by default**. `import limen;
+  limen.enable_logging()` turns it on for dev.
+- **The decision stream** — what did it decide, and why? Pass one or more `Observer` sinks:
 
 ```python
-from fastapi import FastAPI
-from limen import Limen, Mode
-from limen.adapters import RedisStore, LimenMiddleware
-
-class Identity:   # who is this? -> (account_id, auth_kind)
-    def resolve(self, request):
-        tok = read_session_cookie(request)
-        return (account_id_from(tok), "session") if tok else (None, None)
-
-class ClientIP:   # the trusted client IP, or None
-    def resolve(self, request):
-        return request.headers.get("cf-connecting-ip")
-
-app = FastAPI()
-limen = Limen(
-    RedisStore(url="redis://localhost"),                 # 1. store (Redis for multi-worker)
-    config={"enumeration": Mode.ENFORCE,                 # 4. guards + modes (shadow-first)
-            "account_budget": Mode.ENFORCE,
-            "sequence_anomaly": Mode.SHADOW},
-    exempt=lambda ctx: ctx.ip_trusted and ctx.ip in TRUSTED_SCANNER_IPS,  # skip your own scanner
-)
-app.add_middleware(LimenMiddleware, limen=limen, client_ip=ClientIP(), identity=Identity(),
-                   client_ip_trusted=True)  # 2 & 3 — set client_ip_trusted True ONLY behind a locked edge
+from limen.adapters import LoggingObserver, JsonlObserver, PrometheusObserver, SentryObserver
+limen = Limen(store, observer=[LoggingObserver(), JsonlObserver("limen-audit.jsonl")],
+              log_relevance="relevant_only")   # skip the ALLOW noise in the logs
 ```
 
-> An IP `exempt` is a **total bypass** and only as safe as your IP source: gate it on `ctx.ip_trusted`
-> (stamped by `client_ip_trusted=True`, which you set only when a locked edge provides an unspoofable IP),
-> or a spoofed header turns Limen off. See [the guide](docs/integration.md#exempting-trusted-traffic-your-own-scanner-a-partner).
+`log_relevance` is one global switch for the LOG sinks (`"relevant_only"` default / `"all"` / `"off"`). A
+`PrometheusObserver` ignores it and counts **every** action including `allow`, so a dashboard can graph "%
+blocked". You mount and protect the `/metrics` endpoint yourself. See `examples/observability.py`.
 
-That's the whole integration: one middleware, two small ports (`Identity`, `ClientIP`), a store, and your guard
-config. `examples/fastapi_app.py` is a runnable version.
+Every sink subclasses **`Observer`** (an ABC, like a `Guard` or `logging.Handler`): implement `observe(ctx,
+decision)`, optionally set `respects_relevance` / override `observe_latency`, reuse `self.event(...)`.
+`SentryObserver` (`limen[sentry]`) is one bundled example; a Datadog/Slack/webhook sink is a few lines the same
+way (see `docs/integration.md`, "Write your own observer").
+
+## Challenge (human verification), provider-agnostic
+
+A `CHALLENGE` decision can be satisfied by any `Verifier` — Cloudflare Turnstile ships as one bundled adapter,
+your own provider is ~5 lines, or wire none and handle `CHALLENGE` yourself. The FastAPI middleware orchestrates
+the serve → verify → passed-marker flow:
+
+```python
+from limen.adapters import LimenMiddleware, TurnstileVerifier
+app.add_middleware(LimenMiddleware, limen=limen, verifier=TurnstileVerifier(secret="0x..."))
+```
+
+## Integration
+
+**[docs/integration.md](docs/integration.md)** is the full walkthrough (a FastAPI backend + a Next.js proxy):
+the four ports, shadow-first rollout with the Observer, rate-limit recipes, the challenge flow, and
+troubleshooting. **[docs/recipes.md](docs/recipes.md)** shows how to express common needs with the primitives.
 
 ## Adapters
 
-- `limen.adapters.MemoryStore` — thread-safe, in-process; periodic purge bounds memory (single process / tests).
-- `limen.adapters.RedisStore` — shared across workers/replicas (`limen[redis]`).
-- `limen.adapters.LimenMiddleware` — FastAPI/Starlette; enforces pre-request (BLOCK→403, CHALLENGE→429, TARPIT→`tarpit_seconds` delay), observes post-response (`limen[fastapi]`).
-- `@limen/proxy` (in `js/`) — Next.js/edge helper: `buildContext(request)` + `applyDecision(decision)`. See `examples/nextjs_proxy.md`.
-
-`Limen(store, config=..., registry=..., exempt=...)`: `config` sets per-guard modes; a custom `registry` sets
-thresholds / path scoping / canaries; `exempt(ctx)` short-circuits to ALLOW (gate any IP-based exempt on
-`ctx.ip_trusted` — see the guide's warning).
+- `MemoryStore` — thread-safe, in-process; periodic purge bounds memory (single process / tests).
+- `RedisStore` — shared across workers/replicas (`limen[redis]`).
+- `LimenMiddleware` — FastAPI/Starlette; enforces pre-request, records post-response, orchestrates challenge (`limen[fastapi]`).
+- `LoggingObserver` / `JsonlObserver` — decision sinks (zero-dep). `PrometheusObserver` — metrics (`limen[prometheus]`). `SentryObserver` — alerts (`limen[sentry]`). All subclass `Observer`.
+- `TurnstileVerifier` — a bundled `Verifier` (stdlib `urllib`, no extra).
+- `@limen/proxy` (in `js/`) — Next.js/edge helper: `buildContext(request)` + `applyDecision(decision)`.
 
 ## Design principles
 
-Fail-open behind login · shadow-first rollout · per-account keys beat per-IP (IP trust needs a locked origin) ·
-thresholds are configuration, not hardcoded · no secrets in the repo. It cannot hide a user's own data from
-them (nothing client-side can) — it raises the cost of *abuse*, and makes it detectable.
+Fail-open behind login (opt-in `fail_closed` per guard) · shadow-first rollout · per-account keys beat per-IP
+(IP trust needs a locked origin) · thresholds are configuration, not hardcoded · no framescan-isms, no product
+assumptions in the core · no secrets in the repo. It cannot hide a user's own data from them (nothing
+client-side can) — it raises the cost of *abuse*, and makes it detectable.
 
 ## Status & license
 
-Alpha (`0.1.0`). MIT. Contributions welcome — see `CONTRIBUTING.md`.
+`1.0.0`. Apache-2.0. Contributions welcome — see `CONTRIBUTING.md`.

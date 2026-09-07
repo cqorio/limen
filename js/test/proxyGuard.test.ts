@@ -22,9 +22,9 @@ t("applyDecision: ALLOW/ALERT proceed (null)", () => {
   assert.equal(applyDecision(decision(Action.ALERT)), null);
 });
 
-t("applyDecision: BLOCK -> 403, CHALLENGE -> 429", () => {
+t("applyDecision: BLOCK -> 403, CHALLENGE -> 401", () => {
   assert.equal(applyDecision(decision(Action.BLOCK))?.status, 403);
-  assert.equal(applyDecision(decision(Action.CHALLENGE))?.status, 429);
+  assert.equal(applyDecision(decision(Action.CHALLENGE))?.status, 401);
 });
 
 console.log(`proxyGuard: ${n} passed`);

@@ -1,8 +1,40 @@
-"""Watermark guard: emit a per-account tag so leaked data/exports trace back to the account that pulled them.
+"""Watermark — emit a per-account tag so leaked data/exports trace back to whoever pulled them.
 
-Passive — it NEVER blocks. It returns an ALERT signal whose reason carries ``wm=<tag>`` (an HMAC of the account
-id under ``secret``), which an adapter can read (e.g. from ``decision.shadow_reasons`` in SHADOW mode) and stamp
-onto a response or export. Attribution, not prevention. No-op without a ``secret`` or an account.
+WHAT IT DETECTS & WHY IT MATTERS
+    It detects nothing and blocks nothing — it is PASSIVE, for ATTRIBUTION. When a customer's data later
+    shows up somewhere it should not, a per-account watermark stamped into responses/exports tells you which
+    account leaked it. Deterrence and forensics, not prevention.
+
+HOW IT DECIDES
+    For an authenticated request it returns an ALERT signal whose reason carries ``wm=<tag>``, where ``tag``
+    is an HMAC-SHA256 of the account id under your ``secret`` (truncated to ``digits``). An adapter reads that
+    tag (from ``decision.shadow_reasons`` in SHADOW mode) and stamps it into a response header or an export.
+    No-op without a ``secret`` or an account, so it is safe to leave registered.
+
+EXAMPLE
+    >>> from limen.adapters import MemoryStore
+    >>> from limen.guards.watermark import Watermark
+    >>> from limen.core.types import RequestContext
+    >>> g = Watermark(secret="s3cr3t")
+    >>> sig = g.evaluate(RequestContext(method="GET", path="/export", account_id="u1"), MemoryStore())
+    >>> sig.reason.startswith("wm=") and len(sig.reason) > 3
+    True
+    >>> g.evaluate(RequestContext(method="GET", path="/export", account_id="u1"), MemoryStore()).reason == sig.reason
+    True
+
+TUNING
+    ``secret``: the HMAC key — keep it out of the repo (inject from your secret store). ``digits``: tag length
+    (longer = fewer collisions, more to embed). Keep it SHADOW (never let it change the action).
+
+FALSE POSITIVES
+    None — it never blocks. The only failure mode is a leaked/blank ``secret`` (tags become forgeable/absent).
+
+WHAT IT DOES NOT CATCH
+    It does not stop exfiltration, only attributes it after the fact, and only if you actually stamp the tag
+    onto what you serve. A determined leaker who strips the tag defeats it.
+
+STORE KEYS & COST
+    None — a pure HMAC. O(1), no store access.
 """
 from __future__ import annotations
 

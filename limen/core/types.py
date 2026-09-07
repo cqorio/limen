@@ -2,6 +2,14 @@
 
 All frozen dataclasses (cheap, hashable, no accidental mutation on the hot path) and two small enums.
 `Action` is an ``IntEnum`` ordered by severity so aggregating many guards' signals is just ``max()``.
+
+    >>> from limen.core.types import Action, Decision, RequestContext
+    >>> Action.BLOCK > Action.ALLOW                 # ordered by severity → aggregate with max()
+    True
+    >>> Decision(action=Action.TARPIT).blocked      # tarpit/challenge/block all count as "blocked"
+    True
+    >>> RequestContext(method="GET", path="/x").is_pre_request   # no status yet = the enforce phase
+    True
 """
 from __future__ import annotations
 
@@ -47,6 +55,7 @@ class RequestContext:
     account_id: str | None = None         # resolved tenant/account, or None when unauthenticated
     auth_kind: str | None = None          # "session" | "apikey" | None
     referer: str | None = None
+    origin: str | None = None             # the Origin header, for CSRF/same-origin proof on writes
     # True ONLY when `ip` came from a source that cannot be spoofed (a locked edge that sets it + a proxy that
     # strips client-supplied copies). Default False. Gate an IP-based `exempt` on this so a spoofed header can
     # never satisfy the bypass: `exempt=lambda ctx: ctx.ip_trusted and ctx.ip in TRUSTED`.

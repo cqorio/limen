@@ -26,10 +26,20 @@ def test_mixed_endpoints_do_not_fire():
 
 
 def test_exempt_prefix_is_ignored():
-    g = SequenceAnomaly(min_requests=2)
+    # exempt_prefixes is EMPTY by default (general/OSS): you configure it for YOUR app.
+    g = SequenceAnomaly(min_requests=2, exempt_prefixes=("/api/v1",))
     store = MemoryStore()
     for _ in range(5):
         assert g.evaluate(_req("/api/v1/reports"), store) is None
+
+
+def test_empty_exempt_prefixes_by_default_still_fires():
+    g = SequenceAnomaly(min_requests=2)  # no exemptions configured
+    store = MemoryStore()
+    sig = None
+    for _ in range(3):
+        sig = g.evaluate(_req("/api/v1/reports"), store)
+    assert sig is not None and sig.action is Action.ALERT  # not exempt by default
 
 
 def test_non_cookie_session_is_ignored():

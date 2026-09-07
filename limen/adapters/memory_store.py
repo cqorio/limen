@@ -4,6 +4,14 @@ Thread-safe (every access takes the lock). Expired entries are swept periodicall
 number of LIVE (unexpired) keys — an attacker who fans out over many distinct keys can only grow it in
 proportion to their rate over one window, not without bound. Perfect for a single process and tests; use
 ``RedisStore`` to share state across workers/replicas. Monotonic clock (immune to wall-clock changes).
+
+    >>> from limen.adapters.memory_store import MemoryStore
+    >>> s = MemoryStore()
+    >>> s.incr("k", 60), s.incr("k", 60), s.get("k")   # fixed-window counter
+    (1, 2, 2)
+    >>> s.set_str("v", "hello", 60)
+    >>> s.get_str("v")
+    'hello'
 """
 from __future__ import annotations
 

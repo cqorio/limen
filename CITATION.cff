@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use Limen, please cite it using the metadata below."
+title: Limen
+abstract: A lightweight, modular abuse-defense engine for APIs — toggleable guards, shadow/enforce modes, zero core dependencies.
+type: software
+authors:
+  - name: "cqor.io"
+version: 1.0.0
+license: Apache-2.0
+repository-code: "https://github.com/cqorio/limen"
+url: "https://github.com/cqorio/limen"
+date-released: "2026-09-07"

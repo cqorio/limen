@@ -17,8 +17,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install -e '.[dev]'
+      - run: pip install -e '.[dev]'   # dev pulls in redis/fastapi/prometheus/sentry + httpx → full suite, no skips
       - run: python -m pytest -q
+      - run: python -m pytest --doctest-modules limen -q   # the runnable docstring examples
 
   js:
     runs-on: ubuntu-latest

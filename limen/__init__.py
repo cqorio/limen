@@ -11,16 +11,24 @@ safely. Zero required dependencies; bring your own store (memory ships built in,
 """
 from __future__ import annotations
 
+import logging
+
 from .core.config import EngineConfig
 from .core.guard import REGISTRY, Guard, Registry, register
-from .core.ports import ClientIP, Identity, Store
+from .core.observer import Observer
+from .core.ports import ClientIP, Geo, Identity, Store, Verifier
 from .core.types import Action, Decision, Mode, RequestContext, Signal
 from .facade import Limen
+from .logutil import enable_logging
+
+# Library-logging rule: attach a NullHandler so Limen is SILENT until the app configures logging (or calls
+# enable_logging()). We never add a real handler or call basicConfig here — that is the app's prerogative.
+logging.getLogger("limen").addHandler(logging.NullHandler())
 
 # Importing the bundled guards triggers their @register into REGISTRY.
 from . import guards as _guards  # noqa: E402,F401
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "Limen",
@@ -37,4 +45,8 @@ __all__ = [
     "Store",
     "ClientIP",
     "Identity",
+    "Observer",
+    "Verifier",
+    "Geo",
+    "enable_logging",
 ]
