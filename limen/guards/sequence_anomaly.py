@@ -43,7 +43,7 @@ STORE KEYS & COST
 from __future__ import annotations
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -66,14 +66,15 @@ class SequenceAnomaly(Guard):
         self.exempt_prefixes = exempt_prefixes
         self.action = action
 
-    def evaluate(self, ctx: RequestContext, store: Store) -> Signal | None:
-        if not ctx.is_pre_request or ctx.auth_kind != "session" or ctx.account_id is None:
-            return None
-        if self.exempt_prefixes and self.under_any(ctx.path, self.exempt_prefixes):
-            return None
-        tmpl = self.path_template(ctx.path)
-        total = store.incr(f"limen:seq:{ctx.account_id}:__total__", self.window_s)
-        hits = store.incr(f"limen:seq:{ctx.account_id}:{tmpl}", self.window_s)
+    def _skip(self, ctx: RequestContext) -> bool:
+        return (
+            not ctx.is_pre_request
+            or ctx.auth_kind != "session"
+            or ctx.account_id is None
+            or (bool(self.exempt_prefixes) and self.under_any(ctx.path, self.exempt_prefixes))
+        )
+
+    def _decide(self, ctx: RequestContext, tmpl: str, total: int, hits: int) -> Signal | None:
         if total >= self.min_requests and hits / total >= self.dominance:
             return Signal(
                 self.action,
@@ -81,3 +82,19 @@ class SequenceAnomaly(Guard):
                 f"account {ctx.account_id}: {hits}/{total} requests to {tmpl} (no page fan-out)",
             )
         return None
+
+    def evaluate(self, ctx: RequestContext, store: Store) -> Signal | None:
+        if self._skip(ctx):
+            return None
+        tmpl = self.path_template(ctx.path)
+        total = store.incr(f"limen:seq:{ctx.account_id}:__total__", self.window_s)
+        hits = store.incr(f"limen:seq:{ctx.account_id}:{tmpl}", self.window_s)
+        return self._decide(ctx, tmpl, total, hits)
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        if self._skip(ctx):
+            return None
+        tmpl = self.path_template(ctx.path)
+        total = await store.incr(f"limen:seq:{ctx.account_id}:__total__", self.window_s)
+        hits = await store.incr(f"limen:seq:{ctx.account_id}:{tmpl}", self.window_s)
+        return self._decide(ctx, tmpl, total, hits)

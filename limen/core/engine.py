@@ -6,6 +6,14 @@
     >>> from limen.adapters import MemoryStore
     >>> Engine(Registry()).evaluate(RequestContext(method="GET", path="/x"), MemoryStore()).action.name
     'ALLOW'
+
+The async twin (``evaluate_async``) takes an ``AsyncStore`` and awaits each guard::
+
+    >>> import asyncio
+    >>> from limen.adapters import AsyncMemoryStore
+    >>> ctx = RequestContext(method="GET", path="/x")
+    >>> asyncio.run(Engine(Registry()).evaluate_async(ctx, AsyncMemoryStore())).action.name
+    'ALLOW'
 """
 from __future__ import annotations
 
@@ -14,7 +22,7 @@ from typing import Callable
 
 from .config import EngineConfig
 from .guard import REGISTRY, Registry
-from .ports import Store
+from .ports import AsyncStore, Store
 from .types import Action, Decision, Mode, RequestContext
 
 log = logging.getLogger("limen")
@@ -80,6 +88,49 @@ class Engine:
                 continue
 
         # Risk spine: many weak ENFORCE-mode scores can combine into an action none raised alone.
+        if self.config.score_thresholds:
+            action = max(action, self.config.action_for_score(score))
+
+        return Decision(action=action, score=score, reasons=tuple(reasons), shadow_reasons=tuple(shadow))
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Decision:
+        """The async twin of ``evaluate``: awaits each guard's ``evaluate_async`` against an ``AsyncStore``.
+        Identical aggregation, fail-open and fail-closed semantics — a guard that raises (including the base
+        ``evaluate_async`` when a store-backed guard forgot to override it) is caught here and fails OPEN
+        (logged), or denies under ``fail_closed`` ENFORCE. Use with ``AsyncRedisStore`` / ``AsyncMemoryStore``."""
+        if self.exempt is not None and self.exempt(ctx):
+            return Decision(action=Action.ALLOW, reasons=("exempt",))
+        action = Action.ALLOW
+        score = 0.0
+        reasons: list[str] = []
+        shadow: list[str] = []
+
+        for guard in self.registry.all():
+            mode = self.config.mode_for(guard)
+            if mode is Mode.OFF:
+                continue
+            try:
+                signal = await guard.evaluate_async(ctx, store)
+                if signal is None:
+                    continue
+                if mode is Mode.ENFORCE:
+                    action = max(action, signal.action)
+                    score += signal.score
+                    reasons.append(f"{signal.guard}: {signal.reason}")
+                else:  # SHADOW — observed only
+                    shadow.append(f"{signal.guard}: {signal.reason}")
+            except Exception:
+                fail_closed = getattr(guard, "fail_closed", False)
+                log.exception("limen guard %r failed; %s", guard.name, "fail-closed" if fail_closed else "failing open")
+                if fail_closed:
+                    reason = f"{guard.name}: fail-closed (guard error)"
+                    if mode is Mode.ENFORCE:
+                        action = max(action, getattr(guard, "action", Action.BLOCK))
+                        reasons.append(reason)
+                    else:
+                        shadow.append(reason)
+                continue
+
         if self.config.score_thresholds:
             action = max(action, self.config.action_for_score(score))
 

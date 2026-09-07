@@ -42,7 +42,7 @@ import hashlib
 import hmac
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -62,3 +62,6 @@ class Watermark(Guard):
         if not ctx.is_pre_request or not self.secret or ctx.account_id is None:
             return None
         return Signal(Action.ALERT, self.name, f"wm={self.tag(ctx.account_id)}")
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        return self.evaluate(ctx, store)  # pure HMAC — no store access

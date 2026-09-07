@@ -67,3 +67,35 @@ class MemoryStore:
             if entry is None or entry[1] <= time.monotonic():
                 return None
             return entry[0]
+
+
+class AsyncMemoryStore:
+    """The async ``AsyncStore`` twin of ``MemoryStore``: in-process, zero-infra, so async guards and the async
+    doctests run without Redis. It wraps a ``MemoryStore`` (all the thread-safe counter/kv logic lives there);
+    the methods are ``async`` only to satisfy the ``AsyncStore`` contract — there is no real I/O to await, so
+    they never block the event loop. Single process / tests; use ``AsyncRedisStore`` to share across workers.
+
+        >>> import asyncio
+        >>> from limen.adapters.memory_store import AsyncMemoryStore
+        >>> s = AsyncMemoryStore()
+        >>> asyncio.run(s.incr("k", 60)), asyncio.run(s.incr("k", 60))   # fixed-window counter
+        (1, 2)
+        >>> asyncio.run(s.set_str("v", "hi", 60))
+        >>> asyncio.run(s.get_str("v"))
+        'hi'
+    """
+
+    def __init__(self) -> None:
+        self._s = MemoryStore()
+
+    async def incr(self, key: str, window_s: int) -> int:
+        return self._s.incr(key, window_s)
+
+    async def get(self, key: str) -> int:
+        return self._s.get(key)
+
+    async def set_str(self, key: str, value: str, ttl_s: int) -> None:
+        self._s.set_str(key, value, ttl_s)
+
+    async def get_str(self, key: str) -> str | None:
+        return self._s.get_str(key)

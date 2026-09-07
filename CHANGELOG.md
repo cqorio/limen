@@ -6,6 +6,25 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-08
+
+Native **async** support, so Limen runs in async apps (FastAPI on `redis.asyncio`) without blocking the event
+loop. Additive and fully backward-compatible — the sync v1.0 API is unchanged.
+
+### Added
+- **`AsyncStore`** port (async `incr`/`get`/`set_str`/`get_str`) plus two adapters: **`AsyncRedisStore`**
+  (`redis.asyncio`) and **`AsyncMemoryStore`** (in-process, zero-infra — used by the async doctests/tests).
+- **`Guard.evaluate_async`**, **`Engine.evaluate_async`**, and **`Limen.evaluate_async` / `record_async`** — an
+  awaiting evaluation path. Base `Guard.evaluate_async` **raises** rather than delegating to sync: a store-backed
+  guard that forgets its async body is loud, never a silent fail-open (an unawaited coroutine is truthy). Every
+  bundled guard implements it (store-backed ones await; pure-compute ones delegate).
+- **`LimenMiddleware`** awaits the async engine and the challenge/verify store markers when constructed with an
+  async store, and awaits `client_ip` / `identity` ports that are async — so an async account lookup works.
+
+### Fixed
+- **`RedisStore.incr` is now atomic** — one Lua `INCR`+`EXPIRE` script instead of two calls, closing the
+  orphaned-TTL window where a crash between them could lock a bucket forever. Benefits sync users too.
+
 ## [1.0.0] - 2026-09-07
 
 First stable release: a general, single abuse-defense chokepoint (rate limiting, challenge, risk scoring,

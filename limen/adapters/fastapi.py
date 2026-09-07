@@ -10,6 +10,10 @@ Enforces PRE-request and records POST-response::
     limen = Limen(MemoryStore())
     app.add_middleware(LimenMiddleware, limen=limen, client_ip=my_ip, identity=my_identity)
 
+Async: construct ``Limen`` with an ``AsyncRedisStore`` (or ``AsyncMemoryStore``) and the middleware awaits the
+async engine and store automatically (no event-loop blocking). ``client_ip`` / ``identity`` ports may be sync
+or async — an async ``resolve`` is awaited (so a coroutine DB lookup for the account works).
+
 Challenge flow (optional): pass a ``verifier`` (any ``Verifier`` — e.g. ``TurnstileVerifier``). On a CHALLENGE
 decision the middleware serves 401 unless the caller has a recent passed-marker; the caller solves the
 challenge and POSTs the token to ``verify_path`` (default ``/_limen/verify``), which verifies it and writes the
@@ -26,6 +30,7 @@ Two safeguards on that flow:
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import Any
 
 try:
@@ -74,10 +79,24 @@ class LimenMiddleware(BaseHTTPMiddleware):
         self.verify_limit = verify_limit          # cap POSTs to the verify route (anti-flood, per caller)
         self.verify_window_s = verify_window_s
         self.reauth_guards = reauth_guards        # challenges a captcha marker must NOT satisfy
+        # An AsyncStore's methods are coroutines: we must AWAIT the engine (evaluate_async) and every direct
+        # store call in the challenge/verify flow. Calling a sync method on an async store returns an unawaited
+        # coroutine — truthy — which would silently pass every CHALLENGE. Detect it once here.
+        self._async_store = inspect.iscoroutinefunction(getattr(limen.store, "incr", None))
 
-    def _ctx(self, request: Request, status: int | None = None) -> RequestContext:
-        ip = self.client_ip.resolve(request) if self.client_ip else (request.client.host if request.client else None)
-        account_id, auth_kind = self.identity.resolve(request) if self.identity else (None, None)
+    @staticmethod
+    async def _await_maybe(value: Any) -> Any:
+        """Return `value`, awaiting it first if it is awaitable — so one code path serves both a sync ``Store``
+        (returns a value) and an ``AsyncStore`` (returns a coroutine)."""
+        return await value if inspect.isawaitable(value) else value
+
+    async def _resolve(self, port: Any, request: Request) -> Any:
+        """Call a ClientIP/Identity port's ``resolve``, awaiting it if the port is async."""
+        return await self._await_maybe(port.resolve(request))
+
+    async def _ctx(self, request: Request, status: int | None = None) -> RequestContext:
+        ip = await self._resolve(self.client_ip, request) if self.client_ip else (request.client.host if request.client else None)
+        account_id, auth_kind = await self._resolve(self.identity, request) if self.identity else (None, None)
         return RequestContext(
             method=request.method,
             path=request.url.path,
@@ -95,9 +114,11 @@ class LimenMiddleware(BaseHTTPMiddleware):
     def _challenge_key(self, ctx: RequestContext) -> str | None:
         return ctx.account_id or ctx.ip
 
-    def _challenge_passed(self, ctx: RequestContext) -> bool:
+    async def _challenge_passed(self, ctx: RequestContext) -> bool:
         key = self._challenge_key(ctx)
-        return key is not None and self.limen.store.get_str(f"challenge_ok:{key}") is not None
+        if key is None:
+            return False
+        return await self._await_maybe(self.limen.store.get_str(f"challenge_ok:{key}")) is not None
 
     def _is_reauth_challenge(self, decision: Any) -> bool:
         """True when a guard that manages its own proof (step_up / impossible_travel) drove the CHALLENGE —
@@ -107,18 +128,19 @@ class LimenMiddleware(BaseHTTPMiddleware):
     async def _handle_verify(self, request: Request) -> Response:
         if self.verifier is None:
             return PlainTextResponse("No verifier configured", status_code=501)
-        ctx = self._ctx(request)
+        ctx = await self._ctx(request)
         key = self._challenge_key(ctx)
         if key is None:
             return PlainTextResponse("Cannot identify client", status_code=400)
         # Rate-limit the verify route itself: it never reaches the engine, and each call makes a blocking
         # outbound verify — cap it per caller so it can't be used to flood the verifier or the event loop.
-        if self.limen.store.incr(f"limen:verify_rl:{key}", self.verify_window_s) > self.verify_limit:
+        count = await self._await_maybe(self.limen.store.incr(f"limen:verify_rl:{key}", self.verify_window_s))
+        if count > self.verify_limit:
             return PlainTextResponse("Too many attempts", status_code=429)
         token = request.query_params.get("token") or request.headers.get("x-limen-token") or ""
         # verifier.verify may be a blocking network call — run it off the event loop.
         if await run_in_threadpool(self.verifier.verify, token):
-            self.limen.store.set_str(f"challenge_ok:{key}", "1", self.challenge_ttl)
+            await self._await_maybe(self.limen.store.set_str(f"challenge_ok:{key}", "1", self.challenge_ttl))
             return PlainTextResponse("OK", status_code=200)
         return PlainTextResponse("Verification failed", status_code=403)
 
@@ -126,10 +148,11 @@ class LimenMiddleware(BaseHTTPMiddleware):
         if request.url.path == self.verify_path and request.method == "POST":
             return await self._handle_verify(request)
 
-        ctx = self._ctx(request)
-        decision = self.limen.evaluate(ctx)
+        ctx = await self._ctx(request)
+        decision = await self.limen.evaluate_async(ctx) if self._async_store else self.limen.evaluate(ctx)
         action = decision.action
-        if action == Action.CHALLENGE and self._challenge_passed(ctx) and not self._is_reauth_challenge(decision):
+        if (action == Action.CHALLENGE and not self._is_reauth_challenge(decision)
+                and await self._challenge_passed(ctx)):
             action = Action.ALLOW  # a recent passed challenge exempts, except re-auth/travel challenges
 
         if action >= Action.BLOCK:
@@ -140,5 +163,9 @@ class LimenMiddleware(BaseHTTPMiddleware):
             await asyncio.sleep(self.tarpit_seconds)  # serve it, slowly (raises the cost of abuse)
 
         response = await call_next(request)
-        self.limen.record(self._ctx(request, status=response.status_code))
+        post = await self._ctx(request, status=response.status_code)
+        if self._async_store:
+            await self.limen.record_async(post)
+        else:
+            self.limen.record(post)
         return response

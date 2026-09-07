@@ -38,7 +38,7 @@ STORE KEYS & COST
 from __future__ import annotations
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -59,3 +59,6 @@ class Honeytoken(Guard):
             self.name,
             f"honeytoken accessed: {ctx.path} (ip={ctx.ip} account={ctx.account_id})",
         )
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        return self.evaluate(ctx, store)  # pure set-membership check — no store access

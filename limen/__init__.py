@@ -16,7 +16,7 @@ import logging
 from .core.config import EngineConfig
 from .core.guard import REGISTRY, Guard, Registry, register
 from .core.observer import Observer
-from .core.ports import ClientIP, Geo, Identity, Store, Verifier
+from .core.ports import AsyncStore, ClientIP, Geo, Identity, Store, Verifier
 from .core.types import Action, Decision, Mode, RequestContext, Signal
 from .facade import Limen
 from .logutil import enable_logging
@@ -28,7 +28,7 @@ logging.getLogger("limen").addHandler(logging.NullHandler())
 # Importing the bundled guards triggers their @register into REGISTRY.
 from . import guards as _guards  # noqa: E402,F401
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = [
     "Limen",
@@ -43,6 +43,7 @@ __all__ = [
     "RequestContext",
     "Signal",
     "Store",
+    "AsyncStore",
     "ClientIP",
     "Identity",
     "Observer",

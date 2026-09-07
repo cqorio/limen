@@ -50,7 +50,7 @@ from __future__ import annotations
 import json
 
 from ..core.guard import Guard, register
-from ..core.ports import Geo, Store
+from ..core.ports import AsyncStore, Geo, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -76,6 +76,28 @@ class ImpossibleTravel(Guard):
         # Only advance the stored sighting with a NEWER observation (ignore reordered/late arrivals).
         if raw is None or ctx.ts >= raw[1]:
             store.set_str(key, json.dumps([region, ctx.ts]), self.window_s)
+        if raw:
+            last_region, last_ts = raw
+            delta = ctx.ts - last_ts
+            if last_region != region and 0 <= delta <= self.window_s:
+                return Signal(
+                    self.action,
+                    self.name,
+                    f"account {ctx.account_id}: region {last_region}->{region} in {delta:.0f}s",
+                )
+        return None
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        if not ctx.is_pre_request or self.geo is None or ctx.account_id is None or ctx.ip is None:
+            return None
+        region = self.geo.locate(ctx.ip)  # Geo port is sync (no I/O we own)
+        if region is None:
+            return None
+        key = f"limen:geo:{ctx.account_id}"
+        stored = await store.get_str(key)
+        raw = json.loads(stored) if stored else None
+        if raw is None or ctx.ts >= raw[1]:
+            await store.set_str(key, json.dumps([region, ctx.ts]), self.window_s)
         if raw:
             last_region, last_ts = raw
             delta = ctx.ts - last_ts

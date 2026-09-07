@@ -8,8 +8,27 @@ from starlette.routing import Route  # noqa: E402
 from starlette.testclient import TestClient  # noqa: E402
 
 from limen import Action, Guard, Limen, Mode, Registry, Signal  # noqa: E402
-from limen.adapters import LimenMiddleware, MemoryStore  # noqa: E402
+from limen.adapters import AsyncMemoryStore, LimenMiddleware, MemoryStore  # noqa: E402
 from limen.guards.step_up import StepUp  # noqa: E402
+
+
+class AsyncIdentity:
+    async def resolve(self, request):   # an async port (e.g. a coroutine DB/JWT lookup)
+        return "u1", "session"
+
+
+class AccountChallenge(Guard):
+    """Challenges only when the account resolved to the string "u1" — so a 401 proves the async identity
+    yielded a real string, not an unawaited coroutine."""
+
+    name = "acct_challenge"
+    default_mode = Mode.ENFORCE
+
+    def evaluate(self, ctx, store):
+        return Signal(Action.CHALLENGE, self.name, "u1 must verify") if ctx.account_id == "u1" else None
+
+    async def evaluate_async(self, ctx, store):
+        return self.evaluate(ctx, store)  # pure compute — no store access
 
 
 class ChallengeProtected(Guard):
@@ -20,6 +39,9 @@ class ChallengeProtected(Guard):
         if ctx.path == "/protected":
             return Signal(Action.CHALLENGE, self.name, "verify to enter")
         return None
+
+    async def evaluate_async(self, ctx, store):
+        return self.evaluate(ctx, store)  # pure compute — no store access
 
 
 class TokenVerifier:
@@ -32,10 +54,10 @@ class FixedIdentity:
         return "u1", "session"
 
 
-def _client(verifier=None, guard=None, identity=None, **mw):
+def _client(verifier=None, guard=None, identity=None, async_store=False, **mw):
     reg = Registry()
     reg.register(guard or ChallengeProtected())
-    limen = Limen(MemoryStore(), registry=reg)
+    limen = Limen(AsyncMemoryStore() if async_store else MemoryStore(), registry=reg)
 
     async def protected(request):
         return PlainTextResponse("secret")
@@ -83,3 +105,27 @@ def test_step_up_challenge_is_not_cleared_by_a_generic_captcha_marker():
     assert client.get("/protected").status_code == 401           # step_up challenges (no re-auth marker)
     assert client.post("/_limen/verify?token=good").status_code == 200  # captcha solved
     assert client.get("/protected").status_code == 401           # STILL challenged (captcha != re-auth)
+
+
+# --- async store: the middleware must AWAIT the engine + the challenge/verify markers (v1.1.0) ---
+
+def test_async_store_challenge_not_satisfied_by_missing_marker():
+    """Plan (b): under an AsyncStore a CHALLENGE stays 401 — the marker read must be AWAITED, not left as a
+    truthy unawaited coroutine that would silently exempt every request."""
+    client = _client(verifier=TokenVerifier(), async_store=True)
+    assert client.get("/protected").status_code == 401
+
+
+def test_async_store_verify_writes_and_reads_marker_no_500():
+    """Plan (c): verify route increments + verifies + writes the marker (all awaited) with no 500, and the
+    marker then exempts the challenge."""
+    client = _client(verifier=TokenVerifier(), async_store=True)
+    assert client.get("/protected").status_code == 401
+    assert client.post("/_limen/verify?token=good").status_code == 200   # awaited incr + set_str, no 500
+    assert client.get("/protected").status_code == 200                   # awaited marker read exempts it
+
+
+def test_async_identity_resolves_account_to_a_string():
+    """Plan (d): an async Identity port is awaited, so account_id is a real string (the guard fires on "u1")."""
+    client = _client(guard=AccountChallenge(), identity=AsyncIdentity(), async_store=True)
+    assert client.get("/protected").status_code == 401   # would be 200 if account_id were an unawaited coroutine

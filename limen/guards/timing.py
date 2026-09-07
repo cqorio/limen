@@ -46,7 +46,7 @@ import json
 import statistics
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -79,6 +79,23 @@ class Timing(Guard):
         history.append(ctx.ts)
         history = history[-self.samples:]
         store.set_str(key, json.dumps(history), self.window_s)
+        return self._decide(history)
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        if not ctx.is_pre_request:
+            return None
+        caller = ctx.account_id or ctx.ip
+        if caller is None:
+            return None
+        key = f"limen:timing:{caller}"
+        raw = await store.get_str(key)
+        history = json.loads(raw) if raw else []
+        history.append(ctx.ts)
+        history = history[-self.samples:]
+        await store.set_str(key, json.dumps(history), self.window_s)
+        return self._decide(history)
+
+    def _decide(self, history: list[float]) -> Signal | None:
         if len(history) < self.samples:
             return None
         intervals = [b - a for a, b in zip(history, history[1:])]

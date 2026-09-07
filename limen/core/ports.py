@@ -4,8 +4,9 @@ Structural (not ABCs) on purpose: you inject your OWN implementation — wrap yo
 your reverse-proxy's client-IP logic, your session/JWT decoder, your captcha SDK — without inheriting anything
 of ours. A type that has the right methods IS a valid port. ``limen.adapters`` ships ready-made ones.
 
-ABC-vs-Protocol rule: things you WRAP (something you already own) are Protocols here (``Store``, ``ClientIP``,
-``Identity``, ``Verifier``, ``Geo``); things you AUTHOR for Limen, with shared behavior to inherit, are ABCs
+ABC-vs-Protocol rule: things you WRAP (something you already own) are Protocols here (``Store`` /
+``AsyncStore``, ``ClientIP``, ``Identity``, ``Verifier``, ``Geo``); things you AUTHOR for Limen, with shared
+behavior to inherit, are ABCs
 (``Guard`` in ``guard.py``, ``Observer`` in ``observer.py``).
 
 You implement a port by writing a class with the right method — no inheritance (shown as a snippet because a
@@ -42,6 +43,37 @@ class Store(Protocol):
         ...
 
     def get_str(self, key: str) -> str | None:
+        """Read a string value (None if absent/expired)."""
+        ...
+
+
+@runtime_checkable
+class AsyncStore(Protocol):
+    """The async twin of ``Store`` — same contract, ``await``-able methods, for async apps (FastAPI on
+    ``redis.asyncio``) that must not block the event loop.
+
+    A guard reaches an async store only through its ``evaluate_async`` (the sync ``evaluate`` uses ``Store``).
+    ``limen.adapters`` ships ``AsyncMemoryStore`` (in-process, zero-infra — used by the async doctests) and
+    ``AsyncRedisStore`` (shared across workers). Implement one by wrapping your own async client::
+
+        class AsyncStore:
+            async def incr(self, key, window_s): ...   # await your async Redis
+    """
+
+    async def incr(self, key: str, window_s: int) -> int:
+        """Increment `key`'s counter for the current fixed window (creating it with TTL `window_s` on the
+        first hit) and return the new count."""
+        ...
+
+    async def get(self, key: str) -> int:
+        """Current counter value for `key` (0 if absent/expired)."""
+        ...
+
+    async def set_str(self, key: str, value: str, ttl_s: int) -> None:
+        """Store a string value under `key`, expiring after `ttl_s` seconds."""
+        ...
+
+    async def get_str(self, key: str) -> str | None:
         """Read a string value (None if absent/expired)."""
         ...
 
