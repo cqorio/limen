@@ -22,7 +22,11 @@ mode. It is an **open-source library** — lightweight, fast, intuitive, well-do
 ## Adding a guard (inherit these)
 A `Guard(ABC)` subclass, STATELESS (all state in the injected `Store`), `evaluate(ctx, store) -> Signal | None`
 that is TOTAL (never raise on the normal path), handling ONE phase (`ctx.is_pre_request` enforce / status-set
-observe). Thresholds are `__init__` args with defaults. IP-keyed guards self-disable when `ctx.ip` is None.
+observe). **If it touches the `Store`, ALSO implement `async def evaluate_async(ctx, store)` awaiting the ASYNC
+store** (mirror `evaluate` exactly); the base `evaluate_async` RAISES rather than delegating to sync, so a
+store-backed guard that omits it fails OPEN under the async engine (an unawaited coroutine is truthy). A
+pure-compute guard (no store access) may `return self.evaluate(ctx, store)`. Thresholds are `__init__` args with
+defaults. IP-keyed guards self-disable when `ctx.ip` is None.
 `default_mode = SHADOW` if it can false-positive. A single-action guard sets `action`; `fail_closed` is opt-in.
 Ship a full **8-part docstring** (threat · what & why · decision math · runnable `>>>` example · tuning · false
 positives · what it does NOT catch · store keys & cost) using GENERAL paths, and `tests/guards/test_<name>.py`.
