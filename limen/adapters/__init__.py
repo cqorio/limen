@@ -1,9 +1,10 @@
-"""Ready-made adapters. ``MemoryStore``, the two zero-dependency observers, ``TurnstileVerifier`` (stdlib
-``urllib``), ``PrometheusObserver`` and ``SentryObserver`` are always importable — but constructing
-``PrometheusObserver`` / ``SentryObserver`` needs its extra (``limen[prometheus]`` / ``limen[sentry]``) and
-raises a clear error otherwise. ``RedisStore`` (``limen[redis]``) and ``LimenMiddleware`` (``limen[fastapi]``)
-import only when their extra is installed."""
-from .memory_store import MemoryStore
+"""Ready-made adapters. ``MemoryStore`` / ``AsyncMemoryStore`` (sync + async in-process stores), the two
+zero-dependency observers, ``TurnstileVerifier`` (stdlib ``urllib``), ``PrometheusObserver`` and
+``SentryObserver`` are always importable — but constructing ``PrometheusObserver`` / ``SentryObserver`` needs
+its extra (``limen[prometheus]`` / ``limen[sentry]``) and raises a clear error otherwise. ``RedisStore`` /
+``AsyncRedisStore`` (``limen[redis]``) and ``LimenMiddleware`` (``limen[fastapi]``) need their extra to
+CONSTRUCT (the default client), and the middleware to import."""
+from .memory_store import AsyncMemoryStore, MemoryStore
 from .observers import JsonlObserver, LoggingObserver
 from .prometheus import PrometheusObserver  # importable; raises on construction without the prometheus extra
 from .sentry import SentryObserver  # importable; raises on construction without the sentry extra
@@ -11,6 +12,7 @@ from .turnstile import TurnstileVerifier  # stdlib-only (urllib), always availab
 
 __all__ = [
     "MemoryStore",
+    "AsyncMemoryStore",
     "LoggingObserver",
     "JsonlObserver",
     "TurnstileVerifier",
@@ -19,9 +21,9 @@ __all__ = [
 ]
 
 try:
-    from .redis_store import RedisStore
+    from .redis_store import AsyncRedisStore, RedisStore
 
-    __all__.append("RedisStore")
+    __all__ += ["RedisStore", "AsyncRedisStore"]
 except ImportError:  # redis extra not installed
     pass
 

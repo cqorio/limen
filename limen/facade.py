@@ -16,7 +16,7 @@ from .core.config import EngineConfig
 from .core.engine import Engine
 from .core.guard import REGISTRY, Registry
 from .core.observer import Observer
-from .core.ports import Store
+from .core.ports import AsyncStore, Store
 from .core.types import Action, Decision, Mode, RequestContext
 
 log = logging.getLogger("limen.facade")
@@ -43,7 +43,7 @@ class Limen:
 
     def __init__(
         self,
-        store: Store,
+        store: Store | AsyncStore,
         config: EngineConfig | dict[str, Mode | str] | None = None,
         registry: Registry = REGISTRY,
         exempt: Callable[[RequestContext], bool] | None = None,
@@ -67,9 +67,11 @@ class Limen:
         return (observer,)
 
     @property
-    def store(self) -> Store:
+    def store(self) -> Store | AsyncStore:
         """The underlying store — exposed so an adapter (e.g. the challenge flow in the middleware) can read
-        and write markers without reaching into a private attribute."""
+        and write markers without reaching into a private attribute. Sync (``Store``) or async (``AsyncStore``)
+        per what you constructed with; use ``evaluate``/``record`` with a sync store, ``evaluate_async``/
+        ``record_async`` with an async one."""
         return self._store
 
     def evaluate(self, ctx: RequestContext) -> Decision:
@@ -86,6 +88,28 @@ class Limen:
         enforcement lands on the NEXT request's ``evaluate``. Does NOT fire observers (they fire once, on
         ``evaluate``), so a decision is never double-emitted."""
         self._engine.evaluate(ctx, self._store)
+
+    async def evaluate_async(self, ctx: RequestContext) -> Decision:
+        """Async twin of ``evaluate`` for async apps — awaits the guards against your ``AsyncStore`` (construct
+        ``Limen`` with an ``AsyncRedisStore`` / ``AsyncMemoryStore``). Never blocks the event loop; fires the
+        observers exactly once, here, on the enforcing decision.
+
+        >>> import asyncio
+        >>> from limen import Limen, RequestContext
+        >>> from limen.adapters import AsyncMemoryStore
+        >>> limen = Limen(AsyncMemoryStore())
+        >>> asyncio.run(limen.evaluate_async(RequestContext(method="GET", path="/api/me", account_id="u1"))).action.name
+        'ALLOW'
+        """
+        start = time.perf_counter()
+        decision = await self._engine.evaluate_async(ctx, self._store)
+        self._emit(ctx, decision, time.perf_counter() - start)
+        return decision
+
+    async def record_async(self, ctx: RequestContext) -> None:
+        """Async twin of ``record``: feed a POST-response context so response-based guards update their
+        counters. Does NOT fire observers."""
+        await self._engine.evaluate_async(ctx, self._store)
 
     def _emit(self, ctx: RequestContext, decision: Decision, elapsed: float) -> None:
         if not self._observers:

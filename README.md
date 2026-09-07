@@ -142,7 +142,10 @@ troubleshooting. **[docs/recipes.md](docs/recipes.md)** shows how to express com
 ## Adapters
 
 - `MemoryStore` — thread-safe, in-process; periodic purge bounds memory (single process / tests).
-- `RedisStore` — shared across workers/replicas (`limen[redis]`).
+- `RedisStore` — shared across workers/replicas (`limen[redis]`); `incr` is one atomic Lua `INCR`+`EXPIRE`.
+- `AsyncMemoryStore` / `AsyncRedisStore` — the **async** twins for async apps: construct `Limen` with one and use
+  `await limen.evaluate_async(ctx)` / `record_async(ctx)` (never blocks the event loop). `LimenMiddleware` awaits
+  them automatically, and awaits async `client_ip` / `identity` ports. Sync API is unchanged.
 - `LimenMiddleware` — FastAPI/Starlette; enforces pre-request, records post-response, orchestrates challenge (`limen[fastapi]`).
 - `LoggingObserver` / `JsonlObserver` — decision sinks (zero-dep). `PrometheusObserver` — metrics (`limen[prometheus]`). `SentryObserver` — alerts (`limen[sentry]`). All subclass `Observer`.
 - `TurnstileVerifier` — a bundled `Verifier` (stdlib `urllib`, no extra).

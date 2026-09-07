@@ -54,7 +54,7 @@ from __future__ import annotations
 from typing import Callable
 
 from ..core.guard import Guard
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 KeyFn = Callable[[RequestContext], "str | None"]
@@ -126,7 +126,17 @@ class RateLimit(Guard):
         k = self.key(ctx)
         if k is None:  # dimension absent (e.g. no trusted IP) → this bucket does not apply
             return None
-        count = store.incr(f"limen:rl:{self.name}:{k}", self.window_s)
+        return self._decide(k, store.incr(f"limen:rl:{self.name}:{k}", self.window_s))
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        if not ctx.is_pre_request:
+            return None
+        k = self.key(ctx)
+        if k is None:
+            return None
+        return self._decide(k, await store.incr(f"limen:rl:{self.name}:{k}", self.window_s))
+
+    def _decide(self, k: str, count: int) -> Signal | None:
         if count > self.limit:
             return Signal(
                 self.action,

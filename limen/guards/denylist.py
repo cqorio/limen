@@ -42,7 +42,7 @@ STORE KEYS & COST
 from __future__ import annotations
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -75,5 +75,20 @@ class Denylist(Guard):
             if acct is not None and store.get_str(f"limen:deny:account:{acct}") is not None:
                 return Signal(self.action, self.name, f"account {acct} is denylisted (runtime)")
             if ip is not None and store.get_str(f"limen:deny:ip:{ip}") is not None:
+                return Signal(self.action, self.name, f"ip {ip} is denylisted (runtime)")
+        return None
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        if not ctx.is_pre_request:
+            return None
+        acct, ip = ctx.account_id, ctx.ip
+        if acct is not None and acct in self.accounts:
+            return Signal(self.action, self.name, f"account {acct} is denylisted")
+        if ip is not None and ip in self.ips:
+            return Signal(self.action, self.name, f"ip {ip} is denylisted")
+        if self.store_backed:
+            if acct is not None and await store.get_str(f"limen:deny:account:{acct}") is not None:
+                return Signal(self.action, self.name, f"account {acct} is denylisted (runtime)")
+            if ip is not None and await store.get_str(f"limen:deny:ip:{ip}") is not None:
                 return Signal(self.action, self.name, f"ip {ip} is denylisted (runtime)")
         return None

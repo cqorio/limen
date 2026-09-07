@@ -41,7 +41,7 @@ STORE KEYS & COST
 from __future__ import annotations
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -77,4 +77,16 @@ class Enumeration(Guard):
             return None
         if ctx.status == 404 and (not self.path_prefixes or self.under_any(ctx.path, self.path_prefixes)):
             store.incr(self._key(ctx.ip), self.window_s)
+        return None
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        if ctx.ip is None:
+            return None
+        if ctx.is_pre_request:
+            count = await store.get(self._key(ctx.ip))
+            if count > self.limit:
+                return Signal(Action.BLOCK, self.name, f"{count} recent not-found responses from {ctx.ip}")
+            return None
+        if ctx.status == 404 and (not self.path_prefixes or self.under_any(ctx.path, self.path_prefixes)):
+            await store.incr(self._key(ctx.ip), self.window_s)
         return None

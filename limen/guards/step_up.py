@@ -48,7 +48,7 @@ STORE KEYS & COST
 from __future__ import annotations
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -73,6 +73,17 @@ class StepUp(Guard):
         if not self.sensitive_paths or not self.under_any(ctx.path, self.sensitive_paths):
             return None
         raw = store.get_str(f"limen:reauth:{ctx.account_id}")
+        return self._decide(ctx, raw)
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        if not ctx.is_pre_request or ctx.account_id is None:
+            return None
+        if not self.sensitive_paths or not self.under_any(ctx.path, self.sensitive_paths):
+            return None
+        raw = await store.get_str(f"limen:reauth:{ctx.account_id}")
+        return self._decide(ctx, raw)
+
+    def _decide(self, ctx: RequestContext, raw: str | None) -> Signal | None:
         if raw is None:
             return Signal(self.action, self.name, f"step-up required for {ctx.path} (no recent re-auth)")
         try:

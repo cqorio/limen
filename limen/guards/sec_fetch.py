@@ -53,7 +53,7 @@ STORE KEYS & COST
 from __future__ import annotations
 
 from ..core.guard import Guard, register
-from ..core.ports import Store
+from ..core.ports import AsyncStore, Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
 
@@ -99,3 +99,6 @@ class SecFetch(Guard):
                 return None
             return Signal(self.action, self.name, f"{ctx.method} {ctx.path}: no same-origin proof (possible CSRF)")
         return None
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        return self.evaluate(ctx, store)  # pure header check — no store access

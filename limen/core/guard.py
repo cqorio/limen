@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 
-from .ports import Store
+from .ports import AsyncStore, Store
 from .types import Action, Mode, RequestContext, Signal
 
 # path segments that look like ids (uuid, long hex, or all-digits) → collapsed so "/reports/{id}" groups.
@@ -44,6 +44,20 @@ class Guard(ABC):
         """Return a ``Signal`` to act, or ``None`` for "nothing to say / not my phase". Must not raise on
         the normal path; the engine catches exceptions and fails OPEN (unless ``fail_closed``), but a guard
         that raises every time is silently disabled — keep it total."""
+
+    async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
+        """The async twin of ``evaluate`` (used by ``Engine.evaluate_async`` with an ``AsyncStore``).
+
+        The base **raises** — it deliberately does NOT fall back to ``self.evaluate`` — because a sync guard
+        run against an async store would call ``store.incr(...)`` without awaiting it, and in Python an
+        UNAWAITED COROUTINE IS TRUTHY: the guard would count nothing and silently FAIL OPEN. So a store-backed
+        guard MUST override this with an awaiting body; a pure-compute guard (no store access) may simply
+        ``return self.evaluate(ctx, store)`` since it never touches the store. A guard that forgets is loud
+        (this raise), not silently disabled."""
+        raise NotImplementedError(
+            f"{type(self).__name__} has no evaluate_async; a store-backed guard must implement it (awaiting the "
+            f"async store), and a pure-compute guard may `return self.evaluate(ctx, store)`."
+        )
 
     # --- shared helpers (available to every guard) ---
     @staticmethod
