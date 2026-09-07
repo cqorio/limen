@@ -2,7 +2,8 @@
 from limen import Limen, Mode, RequestContext
 from limen.adapters import MemoryStore
 
-limen = Limen(MemoryStore(), config={"enumeration": Mode.ENFORCE, "rate_limit": Mode.ENFORCE})
+# Rate limiting is opt-in: add RateLimit buckets to your own registry (see examples/observability.py).
+limen = Limen(MemoryStore(), config={"enumeration": Mode.ENFORCE})
 
 # A normal authenticated request → allowed.
 d = limen.evaluate(RequestContext(method="GET", path="/api/me", account_id="u1", auth_kind="session", ip="1.2.3.4"))

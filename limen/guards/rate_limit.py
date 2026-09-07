@@ -53,7 +53,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from ..core.guard import REGISTRY, Guard
+from ..core.guard import Guard
 from ..core.ports import Store
 from ..core.types import Action, Mode, RequestContext, Signal
 
@@ -96,7 +96,11 @@ def per(*keyfns: KeyFn) -> KeyFn:
 
 class RateLimit(Guard):
     """One rate-limit bucket. Construct one per dimension you want to cap and register it. Keyed on whatever
-    ``key`` picks; self-disables when ``key`` returns None."""
+    ``key`` picks; self-disables when ``key`` returns None.
+
+    NOT auto-registered: a rate limit has no meaningful zero-config default (a limit is a number and a key is a
+    choice), so unlike the other bundled guards it is not in the default ``REGISTRY``. You add the buckets you
+    want to your own ``Registry`` (see docs/recipes.md) and pass ``registry=`` to ``Limen``."""
 
     default_mode = Mode.ENFORCE
 
@@ -130,11 +134,3 @@ class RateLimit(Guard):
                 f"rate limit: {count}/{self.limit} per {self.window_s}s for {k}",
             )
         return None
-
-
-# The bundled default: a per-account request budget (a human reloads a dashboard a few times an hour, a
-# scraper on one account pulls thousands). This is the general-purpose replacement for the old dedicated
-# `account_budget` guard — it self-disables for unauthenticated traffic and serves the abuser slowly (TARPIT).
-REGISTRY.register(
-    RateLimit(name="rate_limit", key=by_account, limit=600, window_s=3600, action=Action.TARPIT)
-)

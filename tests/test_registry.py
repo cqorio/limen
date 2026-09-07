@@ -8,9 +8,10 @@ from limen import REGISTRY, Guard, Mode, Registry
 def test_core_guards_are_registered_with_unique_names():
     names = REGISTRY.names()
     assert len(names) == len(set(names)), "guard names must be unique"
-    for expected in ("enumeration", "rate_limit", "denylist", "sequence_anomaly"):
+    for expected in ("enumeration", "denylist", "sequence_anomaly"):
         assert expected in names
     assert "account_budget" not in names  # folded into the generic rate_limit
+    assert "rate_limit" not in names  # parametric: NOT auto-registered — you add buckets to your own registry
 
 
 def test_every_registered_guard_has_a_test_file():

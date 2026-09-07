@@ -4,7 +4,7 @@ from limen.adapters import MemoryStore
 
 
 def test_config_dict_with_string_modes():
-    limen = Limen(MemoryStore(), config={"sequence_anomaly": "enforce", "rate_limit": "off"})
+    limen = Limen(MemoryStore(), config={"sequence_anomaly": "enforce", "denylist": "off"})
     d = limen.evaluate(RequestContext(method="GET", path="/api/me", account_id="u1", auth_kind="session"))
     assert d.action is Action.ALLOW  # a single request trips nothing
 
