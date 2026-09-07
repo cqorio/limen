@@ -71,10 +71,11 @@ if decision.blocked:
 | `step_up` | sensitive paths require a recent re-auth marker | ENFORCE |
 | `watermark` | passive: emits a per-account HMAC tag for leak attribution (never blocks) | SHADOW |
 
-`rate_limit`'s bundled default is a per-account request budget served slowly (TARPIT). `denylist`, `honeytoken`,
-`impossible_travel`, `step_up` are no-ops until you configure them, so their ENFORCE defaults are safe out of the
-box. Every guard's module docstring is a full reference (what it detects, the decision math, a runnable example,
-tuning, false positives, and what it does NOT catch).
+`rate_limit` is the one guard NOT auto-registered — a rate limit has no meaningful zero-config default (a limit
+is a number, a key is a choice), so you instantiate the buckets you want in your own registry (see
+`docs/recipes.md`). `denylist`, `honeytoken`, `impossible_travel`, `step_up` are no-ops until you configure them,
+so their ENFORCE defaults are safe out of the box. Every guard's module docstring is a full reference (what it
+detects, the decision math, a runnable example, tuning, false positives, and what it does NOT catch).
 
 ## Write your own guard
 
@@ -102,7 +103,7 @@ Two layers, kept separate (see `docs/integration.md`):
 - **The decision stream** — what did it decide, and why? Pass one or more `Observer` sinks:
 
 ```python
-from limen.adapters import LoggingObserver, JsonlObserver, PrometheusObserver
+from limen.adapters import LoggingObserver, JsonlObserver, PrometheusObserver, SentryObserver
 limen = Limen(store, observer=[LoggingObserver(), JsonlObserver("limen-audit.jsonl")],
               log_relevance="relevant_only")   # skip the ALLOW noise in the logs
 ```
@@ -110,6 +111,11 @@ limen = Limen(store, observer=[LoggingObserver(), JsonlObserver("limen-audit.jso
 `log_relevance` is one global switch for the LOG sinks (`"relevant_only"` default / `"all"` / `"off"`). A
 `PrometheusObserver` ignores it and counts **every** action including `allow`, so a dashboard can graph "%
 blocked". You mount and protect the `/metrics` endpoint yourself. See `examples/observability.py`.
+
+Every sink subclasses **`Observer`** (an ABC, like a `Guard` or `logging.Handler`): implement `observe(ctx,
+decision)`, optionally set `respects_relevance` / override `observe_latency`, reuse `self.event(...)`.
+`SentryObserver` (`limen[sentry]`) is one bundled example; a Datadog/Slack/webhook sink is a few lines the same
+way (see `docs/integration.md`, "Write your own observer").
 
 ## Challenge (human verification), provider-agnostic
 
@@ -133,7 +139,7 @@ troubleshooting. **[docs/recipes.md](docs/recipes.md)** shows how to express com
 - `MemoryStore` — thread-safe, in-process; periodic purge bounds memory (single process / tests).
 - `RedisStore` — shared across workers/replicas (`limen[redis]`).
 - `LimenMiddleware` — FastAPI/Starlette; enforces pre-request, records post-response, orchestrates challenge (`limen[fastapi]`).
-- `LoggingObserver` / `JsonlObserver` — decision sinks (zero-dep). `PrometheusObserver` — metrics (`limen[prometheus]`).
+- `LoggingObserver` / `JsonlObserver` — decision sinks (zero-dep). `PrometheusObserver` — metrics (`limen[prometheus]`). `SentryObserver` — alerts (`limen[sentry]`). All subclass `Observer`.
 - `TurnstileVerifier` — a bundled `Verifier` (stdlib `urllib`, no extra).
 - `@limen/proxy` (in `js/`) — Next.js/edge helper: `buildContext(request)` + `applyDecision(decision)`.
 

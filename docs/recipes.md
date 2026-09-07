@@ -141,11 +141,15 @@ def build_registry(buckets):
 ## See what it decided (logs) and graph it (metrics)
 
 ```python
-from limen.adapters import LoggingObserver, JsonlObserver, PrometheusObserver
+from limen.adapters import LoggingObserver, JsonlObserver, PrometheusObserver, SentryObserver
 limen = Limen(store, registry=reg,
-              observer=[LoggingObserver(), JsonlObserver("limen-audit.jsonl"), PrometheusObserver()],
+              observer=[LoggingObserver(), JsonlObserver("limen-audit.jsonl"),
+                        PrometheusObserver(), SentryObserver()],   # SentryObserver needs limen[sentry]
               log_relevance="relevant_only")   # logs skip ALLOWs; metrics still count them
 ```
+
+`SentryObserver` reports only decisions at or above `min_action` (default BLOCK) as tagged Sentry messages. For
+any other service (Datadog/Slack/webhook), subclass `Observer` — see docs/integration.md, "Write your own observer".
 
 Expose the metrics (and **protect** the route — internal-only or admin-gated; never public):
 

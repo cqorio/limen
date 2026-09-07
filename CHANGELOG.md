@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+### Changed
+- **`Observer` is now an abstract base class** (`limen.core.observer.Observer`), not a Protocol — subclass it,
+  implement `observe`, inherit `respects_relevance` / a no-op `observe_latency` / the `event()` helper. Matches
+  `Guard` and `logging.Handler`. The infrastructure-wrapping ports (`Store`/`ClientIP`/`Identity`/`Verifier`/
+  `Geo`) stay Protocols. Bundled sinks now subclass `Observer`.
+- **`rate_limit` is no longer auto-registered** — a rate limit has no meaningful zero-config default, so you
+  instantiate the buckets you want in your own registry (see docs/recipes.md). `Limen(store)` no longer ships a
+  default per-account budget; add a `RateLimit(key=by_account, ...)` bucket for it.
+
+### Added
+- **`SentryObserver`** (`limen[sentry]`) — reports serious decisions (>= `min_action`) to Sentry; the Sentry
+  call is behind an injectable `capture`, so it is testable without the dependency.
+- A **"Write your own observer"** guide (docs/integration.md) and a public `Observer.event()` helper.
+- Runnable `>>>` doctests across the non-guard modules (core, facade, memory_store, observers, sentry), so
+  `pytest --doctest-modules limen` covers them.
 
 ## [1.0.0]
 

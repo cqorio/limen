@@ -127,10 +127,33 @@ limen = Limen(store, observer=[LoggingObserver(), JsonlObserver("limen-audit.jso
   app.mount("/metrics", make_asgi_app())   # internal-only (scraped inside your network), never public
   ```
   `limen_decisions_total{action,guard}` gives "% blocked" = `block / sum(all)`.
+- `SentryObserver` (`limen[sentry]`) — reports serious decisions (>= `min_action`, default BLOCK) to Sentry as
+  tagged messages, for alerting. Quiet by design (a LOG sink + the `min_action` floor).
 
 `log_relevance` is ONE global switch for the LOG sinks: `"relevant_only"` (default — skip plain ALLOWs),
 `"all"`, or `"off"`. The metrics sink ignores it and always counts. Observers never break a request: a sink that
 raises is logged and swallowed. (`examples/observability.py` is this, runnable.)
+
+### Write your own observer
+
+Every sink is an `Observer` — an ABC, like a `Guard` or Python's `logging.Handler`. Subclass it, implement
+`observe`, optionally set `respects_relevance` (False only for a metrics/always-on sink) or override
+`observe_latency`, and reuse `self.event(...)` for the field union. That is the whole extension point — Sentry,
+Datadog, Slack, a webhook, OpenTelemetry all plug in the same way:
+
+```python
+import urllib.request, json
+from limen import Observer
+
+class SlackWebhook(Observer):
+    def __init__(self, url): self.url = url
+    def observe(self, ctx, decision):
+        if decision.action.name in ("BLOCK", "CHALLENGE"):        # only alert on serious ones
+            body = json.dumps({"text": f"limen {decision.action.name}: {'; '.join(decision.reasons)}"}).encode()
+            urllib.request.urlopen(self.url, data=body, timeout=3)  # (do this off the request path in prod)
+
+limen = Limen(store, observer=[LoggingObserver(), SlackWebhook("https://hooks.slack.com/...")])
+```
 
 ## Rate-limit recipes
 
