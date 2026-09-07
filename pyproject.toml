@@ -29,12 +29,14 @@ redis = ["redis>=4.2"]
 fastapi = ["starlette>=0.27"]
 prometheus = ["prometheus_client>=0.16"]
 sentry = ["sentry-sdk>=2,<4"]  # new_scope() API; push_scope (removed in 3.0) is not used
-dev = ["pytest>=7"]
+# dev pulls in every optional extra so `pip install -e '.[dev]'` runs the WHOLE test suite (redis/fastapi/
+# prometheus/sentry paths included, nothing skipped). httpx is needed by Starlette's TestClient (test_challenge).
+dev = ["limen[redis,fastapi,prometheus,sentry]", "pytest>=7", "httpx>=0.24"]
 
 [project.urls]
-Homepage = "https://github.com/your-org/limen"
-Repository = "https://github.com/your-org/limen"
-Issues = "https://github.com/your-org/limen/issues"
+Homepage = "https://github.com/cqorio/limen"
+Repository = "https://github.com/cqorio/limen"
+Issues = "https://github.com/cqorio/limen/issues"
 
 [tool.setuptools.packages.find]
 include = ["limen*"]

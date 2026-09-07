@@ -68,15 +68,14 @@ construct without it); ship its own test (inject a fake so it needs no dependenc
    rate-limited and runs the verifier off the event loop; a captcha marker never satisfies a re-auth (`step_up`)
    challenge.
 
-## Dev workflow — use these
-- **graphify**: `graphify query "<question>"` before browsing; `graphify update .` after changing code.
-- **ponytail** (always on): climb the ladder, shortest diff that works. `/ponytail-review` on the diff before commit.
-- **devil's-advocate**: the Stop hook reviews completed work; clear `[CRITICAL]`/`[HIGH]` before the turn ends.
-- **Tests**: `python -m pytest` and `python -m pytest --doctest-modules limen` (core), and
-  `cd js && node --experimental-strip-types test/proxyGuard.test.ts`.
+## Dev workflow
+- **Install for dev** (`dev` pulls in every optional extra, so the whole suite runs, nothing skipped):
+  `pip install -e '.[dev]'`.
+- **Tests**: `python -m pytest` and `python -m pytest --doctest-modules limen` — the doctests in every module
+  are the runnable usage examples. JS edge adapter: `cd js && node --experimental-strip-types test/proxyGuard.test.ts`.
 
 ## Definition of done
 Guard changes: stateless, thresholds as args, `evaluate` total, 8-part docstring with a doctest, its own test
 file, shadow if risky. Observer changes: subclass `Observer`, its own test. Every module: docstring + example
-(decision 8). Before commit: `pytest` + doctests green both sides; `/ponytail-review`; devil's-advocate
-`[CRITICAL]`/`[HIGH]` cleared; `graphify update .`.
+(decision 8). Before opening a PR: `python -m pytest`, `python -m pytest --doctest-modules limen`, and the JS
+test all green (CI enforces this across Python 3.10–3.13).
