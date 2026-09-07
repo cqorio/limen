@@ -60,7 +60,7 @@ if decision.blocked:
 
 | name | what it catches | default mode |
 |---|---|---|
-| `rate_limit` | too many requests from one caller — key it on IP / account / endpoint / global / composite | ENFORCE |
+| `rate_limit` | too many requests from one caller — key it on IP / account / endpoint / global / composite | ENFORCE (opt-in, see below) |
 | `enumeration` | an IP racking up not-found responses (id/endpoint guessing) | ENFORCE |
 | `sequence_anomaly` | a browser session pounding one endpoint with no page fan-out | SHADOW |
 | `sec_fetch` | a cross-site cookie-session call; with `methods=` also a CSRF guard on writes | SHADOW |

@@ -53,7 +53,7 @@ class SentryObserver(Observer):
             raise ImportError("SentryObserver needs sentry-sdk: pip install 'limen[sentry]'") from exc
 
         def cap(message: str, level: str, tags: dict[str, str]) -> None:
-            with sentry_sdk.push_scope() as scope:
+            with sentry_sdk.new_scope() as scope:  # new_scope() is the 2.x+ API (push_scope was removed in 3.0)
                 for k, v in tags.items():
                     scope.set_tag(k, v)
                 sentry_sdk.capture_message(message, level=level)

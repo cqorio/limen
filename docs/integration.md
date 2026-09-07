@@ -60,13 +60,14 @@ class ClientIP:
 from limen import Limen, Mode
 limen = Limen(store, config={
     "enumeration": Mode.ENFORCE,
-    "rate_limit": Mode.ENFORCE,
     "sequence_anomaly": Mode.SHADOW,   # observe for a while, then flip to ENFORCE
     "sec_fetch": Mode.SHADOW,
 })
 ```
-Unlisted guards use their own default mode. `config` sets **modes**; to change **thresholds**, add rate-limit
-buckets, or scope a guard, use a custom registry (below / see `docs/recipes.md`).
+`config` sets **modes** for the guards in the registry; unlisted guards use their own default mode. Rate limiting
+is opt-in (`rate_limit` is not auto-registered) — add `RateLimit` buckets in a custom registry (see the
+"Rate-limit recipes" section below and `docs/recipes.md`). A `config` key for a guard that is not in the registry
+is silently ignored, so put your buckets in the registry, not the mode config.
 
 ## 5. Enforce — the backend middleware
 
