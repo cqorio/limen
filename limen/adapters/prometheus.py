@@ -15,8 +15,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.observer import Observer
 
-class PrometheusObserver:
+
+class PrometheusObserver(Observer):
     respects_relevance = False  # count EVERY action, incl. allow (the denominator for "% blocked")
 
     def __init__(self, registry: Any = None) -> None:

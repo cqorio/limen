@@ -1,4 +1,11 @@
-"""``Limen`` — the one object most users need. Holds your Store + config + observers; call it per request."""
+"""``Limen`` — the one object most users need. Holds your Store + config + observers; call it per request.
+
+    >>> from limen import Limen, RequestContext
+    >>> from limen.adapters import MemoryStore
+    >>> limen = Limen(MemoryStore())
+    >>> limen.evaluate(RequestContext(method="GET", path="/api/me", account_id="u1")).action.name
+    'ALLOW'
+"""
 from __future__ import annotations
 
 import logging
@@ -8,7 +15,8 @@ from typing import Callable, Iterable
 from .core.config import EngineConfig
 from .core.engine import Engine
 from .core.guard import REGISTRY, Registry
-from .core.ports import Observer, Store
+from .core.observer import Observer
+from .core.ports import Store
 from .core.types import Action, Decision, Mode, RequestContext
 
 log = logging.getLogger("limen.facade")
@@ -84,15 +92,14 @@ class Limen:
             return
         relevant = decision.action != Action.ALLOW or bool(decision.shadow_reasons)
         for obs in self._observers:
-            if getattr(obs, "respects_relevance", True):
+            # respects_relevance / observe_latency are guaranteed by the Observer base — no duck-typing needed.
+            if obs.respects_relevance:
                 if self._log_relevance == "off":
                     continue
                 if self._log_relevance == "relevant_only" and not relevant:
                     continue
             try:
                 obs.observe(ctx, decision)
-                latency_hook = getattr(obs, "observe_latency", None)
-                if latency_hook is not None:
-                    latency_hook(elapsed)
+                obs.observe_latency(elapsed)
             except Exception:  # an observer must never break request handling (fail-open)
                 log.warning("limen observer %r failed; ignoring", type(obs).__name__, exc_info=True)

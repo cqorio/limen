@@ -1,7 +1,7 @@
 import io
 import json
 
-from limen import Action, Guard, Limen, Mode, Registry, RequestContext, Signal
+from limen import Action, Guard, Limen, Mode, Observer, Registry, RequestContext, Signal
 from limen.adapters import JsonlObserver, MemoryStore
 
 
@@ -19,9 +19,7 @@ def _block_registry():
     return reg
 
 
-class Capture:
-    respects_relevance = True
-
+class Capture(Observer):
     def __init__(self):
         self.events = []
 
@@ -29,7 +27,7 @@ class Capture:
         self.events.append((ctx, decision))
 
 
-class Metrics:
+class Metrics(Observer):
     respects_relevance = False
 
     def __init__(self):
@@ -79,9 +77,7 @@ def test_off_silences_logs_even_on_a_block_but_metrics_still_count():
 
 
 def test_a_raising_observer_never_breaks_the_request():
-    class Boom:
-        respects_relevance = True
-
+    class Boom(Observer):
         def observe(self, ctx, decision):
             raise RuntimeError("sink down")
 
@@ -91,9 +87,7 @@ def test_a_raising_observer_never_breaks_the_request():
 
 
 def test_a_raising_latency_hook_never_breaks_the_request():
-    class BadLatency:
-        respects_relevance = True
-
+    class BadLatency(Observer):
         def observe(self, ctx, decision):
             pass
 

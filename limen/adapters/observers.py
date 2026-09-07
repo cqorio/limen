@@ -1,10 +1,19 @@
-"""Decision sinks (Layer B — the audit/event log). The facade calls ``observe(ctx, decision)`` once per
-enforcing evaluate. These two are zero-dependency; ``PrometheusObserver`` (metrics) lives in ``prometheus.py``
-behind the ``limen[prometheus]`` extra.
+"""Decision sinks (Layer B — the audit/event log), both zero-dependency. The facade calls ``observe(ctx,
+decision)`` once per enforcing evaluate. ``PrometheusObserver`` (metrics) lives in ``prometheus.py`` behind the
+``limen[prometheus]`` extra; ``SentryObserver`` in ``sentry.py`` behind ``limen[sentry]``.
 
-Both here are LOG sinks (``respects_relevance = True``), so the facade's global ``log_relevance`` switch can
-drop plain ALLOWs from them. Never log secret values — Limen's ``RequestContext`` carries no bodies/tokens, and
-guard ``reason`` strings should not either.
+Both here subclass ``Observer`` and are LOG sinks (``respects_relevance = True``), so the facade's global
+``log_relevance`` switch can drop plain ALLOWs from them. Never log secret values — ``RequestContext`` carries no
+bodies/tokens, and guard ``reason`` strings should not either.
+
+    >>> import io, json
+    >>> from limen.adapters.observers import JsonlObserver
+    >>> from limen.core.types import RequestContext, Decision, Action
+    >>> buf = io.StringIO()
+    >>> JsonlObserver(buf).observe(RequestContext(method="GET", path="/pay", ip="1.1.1.1"),
+    ...                            Decision(action=Action.BLOCK, reasons=("rl: over",)))
+    >>> json.loads(buf.getvalue())["action"], json.loads(buf.getvalue())["path"]
+    ('BLOCK', '/pay')
 """
 from __future__ import annotations
 
@@ -14,30 +23,13 @@ import sys
 import threading
 from typing import Any
 
-
-def _event(ctx: Any, decision: Any) -> dict[str, Any]:
-    """The field union both sinks emit — identity + request + verdict, no request body/headers/secrets."""
-    return {
-        "ts": ctx.ts,
-        "action": decision.action.name,
-        "score": decision.score,
-        "reasons": list(decision.reasons),
-        "shadow_reasons": list(decision.shadow_reasons),
-        "ip": ctx.ip,
-        "account": ctx.account_id,
-        "auth_kind": ctx.auth_kind,
-        "method": ctx.method,
-        "path": ctx.path,
-        "status": ctx.status,
-    }
+from ..core.observer import Observer
 
 
-class LoggingObserver:
+class LoggingObserver(Observer):
     """Zero-config default: one structured line per decision through the stdlib ``logging`` system (so the app
     routes/filters/formats it). Fields go in ``extra`` namespaced ``limen_*`` to avoid ``LogRecord`` clashes.
     Emits at INFO — a routine BLOCK is the library WORKING, not a warning; filter on ``limen_action``."""
-
-    respects_relevance = True
 
     def __init__(self, logger: logging.Logger | None = None, level: int = logging.INFO) -> None:
         self._log = logger or logging.getLogger("limen.decisions")
@@ -62,11 +54,9 @@ class LoggingObserver:
         )
 
 
-class JsonlObserver:
+class JsonlObserver(Observer):
     """One JSON object per line — the most inspectable audit format (grep / tail / ship to Loki/ELK). ``dest``
     is a file PATH (appended, line-buffered) or an open text stream; default ``sys.stdout`` (the screen)."""
-
-    respects_relevance = True
 
     def __init__(self, dest: Any = None) -> None:
         self._lock = threading.Lock()
@@ -78,7 +68,7 @@ class JsonlObserver:
             self._fh = dest
 
     def observe(self, ctx: Any, decision: Any) -> None:
-        line = json.dumps(_event(ctx, decision))
+        line = json.dumps(self.event(ctx, decision))
         with self._lock:
             self._fh.write(line + "\n")
             self._fh.flush()

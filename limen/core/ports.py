@@ -1,8 +1,19 @@
 """The pluggable dependencies Limen needs, as structural ``typing.Protocol``s.
 
 Structural (not ABCs) on purpose: you inject your OWN implementation — wrap your existing Redis client,
-your reverse-proxy's client-IP logic, your session/JWT decoder — without inheriting anything of ours.
-A type that has the right methods IS a valid port. `limen.adapters` ships ready-made ones.
+your reverse-proxy's client-IP logic, your session/JWT decoder, your captcha SDK — without inheriting anything
+of ours. A type that has the right methods IS a valid port. ``limen.adapters`` ships ready-made ones.
+
+ABC-vs-Protocol rule: things you WRAP (something you already own) are Protocols here (``Store``, ``ClientIP``,
+``Identity``, ``Verifier``, ``Geo``); things you AUTHOR for Limen, with shared behavior to inherit, are ABCs
+(``Guard`` in ``guard.py``, ``Observer`` in ``observer.py``).
+
+You implement a port by writing a class with the right method — no inheritance (shown as a snippet because a
+real one needs your framework's request object)::
+
+    class ClientIP:
+        def resolve(self, request):
+            return request.headers.get("cf-connecting-ip")   # trusted ONLY behind a locked edge
 """
 from __future__ import annotations
 
@@ -51,22 +62,6 @@ class Identity(Protocol):
     browser traffic differently from programmatic API-key traffic."""
 
     def resolve(self, request: Any) -> tuple[str | None, str | None]: ...
-
-
-@runtime_checkable
-class Observer(Protocol):
-    """A sink for decisions: the facade calls ``observe(ctx, decision)`` once per enforcing evaluate, so you
-    can log/audit/graph what Limen did. Implementations must be cheap (it is on the request path) and should
-    not raise (the facade guards the call anyway). See ``limen.adapters`` for ready-made sinks.
-
-    ``respects_relevance`` (class attribute, default True) controls whether the facade's global
-    ``log_relevance`` switch applies: LOG sinks leave it True (so a plain ALLOW is skipped under
-    ``"relevant_only"``); a METRICS sink sets it False so it counts EVERY decision (you need the ALLOW count as
-    the denominator for "% blocked")."""
-
-    respects_relevance: bool
-
-    def observe(self, ctx: Any, decision: Any) -> None: ...
 
 
 @runtime_checkable

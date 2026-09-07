@@ -15,7 +15,8 @@ import logging
 
 from .core.config import EngineConfig
 from .core.guard import REGISTRY, Guard, Registry, register
-from .core.ports import ClientIP, Geo, Identity, Observer, Store, Verifier
+from .core.observer import Observer
+from .core.ports import ClientIP, Geo, Identity, Store, Verifier
 from .core.types import Action, Decision, Mode, RequestContext, Signal
 from .facade import Limen
 from .logutil import enable_logging
