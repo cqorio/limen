@@ -1,5 +1,8 @@
 # Limen
 
+[![CI](https://github.com/cqorio/limen/actions/workflows/ci.yml/badge.svg)](https://github.com/cqorio/limen/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 > A lightweight, modular abuse-defense engine for your API. *Limen* is Latin for "threshold": it decides what
 > crosses yours.
 
@@ -14,13 +17,15 @@ a cross-site write, a stolen session hopping continents.
 
 ## Install
 
+Not yet on PyPI — install from GitHub, pinning a release tag for a stable version:
+
 ```bash
-pip install limen                      # core, no dependencies
-pip install 'limen[redis]'             # + Redis-backed shared store
-pip install 'limen[fastapi]'           # + FastAPI/Starlette middleware
-pip install 'limen[prometheus]'        # + a Prometheus metrics sink
-pip install 'limen[redis,fastapi]'     # extras stack
+pip install "limen @ git+https://github.com/cqorio/limen@v1.0.0"                    # core, no dependencies
+pip install "limen[redis,fastapi] @ git+https://github.com/cqorio/limen@v1.0.0"     # with optional extras
 ```
+
+Optional extras (stackable): `redis` (shared store), `fastapi` (middleware), `prometheus` (metrics sink),
+`sentry` (alerts). The core itself has zero required dependencies.
 
 ## Quickstart
 
@@ -152,4 +157,4 @@ client-side can) — it raises the cost of *abuse*, and makes it detectable.
 
 ## Status & license
 
-`1.0.0`. MIT. Contributions welcome — see `CONTRIBUTING.md`.
+`1.0.0`. Apache-2.0. Contributions welcome — see `CONTRIBUTING.md`.
