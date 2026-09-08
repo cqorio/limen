@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-08
+
+Two shared-IP (NAT / CGNAT / shared VPN) false-positive fixes for the reputation → denylist path, so a
+persistent ban can no longer catch an innocent user who merely shares an address with an abuser. Closes #12.
+
+### Changed
+- **`Enumeration` keys on account-when-known, else IP** (was IP-only). An authenticated caller is judged on
+  its OWN 404s, so users sharing a NAT IP are no longer lumped into one counter and one of them cannot be
+  banned for another's id-guessing. The store key is now `limen:enum:<kind>:<id>` (`kind` = account or ip).
+  Anonymous callers still share one per-IP counter (there is no account to key on).
+
+### Added
+- **`Denylist(ip_bans_exempt_authenticated=...)`** (default False). When True, a caller that HAS an account
+  (and whose account is not itself banned) is not subject to IP bans — the account is checked first and, being
+  clean, wins. This keeps an IP ban (a blunt instrument a NAT shares) from catching a signed-in user as
+  collateral; an authenticated abuser is still bannable by account. Off by default, so existing behavior
+  (IP bans apply to everyone on the IP) is unchanged.
+
 ## [1.4.0] - 2026-09-08
 
 Make `ReputationObserver` safe to feed from per-request behavioral guards, and let `Timing` be path-scoped.
