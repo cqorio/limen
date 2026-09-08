@@ -28,7 +28,7 @@ logging.getLogger("limen").addHandler(logging.NullHandler())
 # Importing the bundled guards triggers their @register into REGISTRY.
 from . import guards as _guards  # noqa: E402,F401
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 __all__ = [
     "Limen",
