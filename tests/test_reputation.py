@@ -73,6 +73,47 @@ def test_shadow_reasons_count_as_signals():
     assert store.get_str("limen:deny:ip:6.6.6.6") == "1"   # a shadow detection is still a signal
 
 
+def test_once_per_window_guard_never_bans_alone():
+    # A metronomic caller trips `timing` on every request, but once-per-window caps it at ONE weight per
+    # window, kept below threshold -> a steady poller / health-check is never banned by rhythm alone.
+    store = MemoryStore()
+    rep = ReputationObserver(store, weights={"timing": 10}, threshold=25, once_per_window_guards={"timing"})
+    ctx = RequestContext(method="GET", path="/api/x", ip="7.7.7.7")
+    for _ in range(50):
+        rep.observe(ctx, _hit("timing"))
+    assert store.get_str("limen:deny:ip:7.7.7.7") is None
+
+
+def test_once_per_window_combines_with_per_hit_to_ban():
+    # timing (once-per-window, 10) + a per-hit hostile signal (honeytoken, 15) crosses 25 in one window.
+    store = MemoryStore()
+    rep = ReputationObserver(store, weights={"timing": 10, "honeytoken": 15}, threshold=25,
+                             once_per_window_guards={"timing"})
+    ctx = RequestContext(method="GET", path="/api/x", ip="7.7.7.7")
+    for _ in range(10):
+        rep.observe(ctx, _hit("timing"))       # timing counted once -> 10
+    assert store.get_str("limen:deny:ip:7.7.7.7") is None
+    rep.observe(ctx, _hit("honeytoken"))        # +15 -> 25 -> ban
+    assert store.get_str("limen:deny:ip:7.7.7.7") == "1"
+
+
+def test_score_is_per_window_not_cumulative(monkeypatch):
+    # Across many windows a once-per-window guard re-counts, but the score is bucketed per window, so it never
+    # accumulates past threshold: a persistent metronomic client stays bounded forever.
+    import limen.adapters.reputation as rep_mod
+    store = MemoryStore()
+    rep = ReputationObserver(store, weights={"timing": 10}, threshold=25,
+                             once_per_window_guards={"timing"}, window_s=100)
+    ctx = RequestContext(method="GET", path="/api/x", ip="7.7.7.7")
+    clock = [0.0]
+    monkeypatch.setattr(rep_mod.time, "time", lambda: clock[0])
+    for w in range(10):
+        clock[0] = w * 100 + 1          # a fresh window each iteration
+        for _ in range(20):
+            rep.observe(ctx, _hit("timing"))
+    assert store.get_str("limen:deny:ip:7.7.7.7") is None   # 10 per window, never crosses 25
+
+
 def test_async_observer_path_bans_via_async_store():
     # A store-backed ReputationObserver runs on evaluate_async (observe_async awaited) and bans via the async
     # store. Honeytoken (ENFORCE) flags on the canary -> decision fires the observer.

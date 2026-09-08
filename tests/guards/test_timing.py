@@ -33,3 +33,19 @@ def test_silent_until_enough_samples():
 
 def test_no_caller_is_ignored():
     assert Timing().evaluate(RequestContext(method="GET", path="/x", ts=0.0), MemoryStore()) is None
+
+
+def _steady(g, path, n=6):
+    store = MemoryStore()
+    sig = None
+    for i in range(n):  # 1.0s apart → stdev 0
+        sig = g.evaluate(RequestContext(method="GET", path=path, ip="5.5.5.5", ts=float(i)), store)
+    return sig
+
+
+def test_exempt_prefix_never_fires():
+    # A steady rhythm on an exempt path is neither recorded nor judged (v1.4.0).
+    g = Timing(samples=5, max_stdev_s=0.5, exempt_prefixes=("/api/health", "/api/v1/"))
+    assert _steady(g, "/api/health") is None
+    assert _steady(g, "/api/v1/reports/1") is None
+    assert _steady(g, "/api/data").action is Action.ALERT   # a non-exempt path still trips

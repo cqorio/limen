@@ -124,15 +124,25 @@ keep denylist ENFORCE.
 
 ```python
 from limen.adapters import ReputationObserver
-rep = ReputationObserver(store, weights={"honeytoken": 10, "enumeration": 5, "sequence_anomaly": 5},
-                         threshold=25, window_s=3600, ban_ttl_s=3600)
+rep = ReputationObserver(store, weights={"honeytoken": 10, "enumeration": 15, "sequence_anomaly": 5, "timing": 10},
+                         threshold=25, window_s=3600, ban_ttl_s=3600,
+                         once_per_window_guards={"timing", "sequence_anomaly", "enumeration"})
 limen = Limen(store, config={"denylist": Mode.ENFORCE}, observer=[LoggingObserver(), rep])
 ```
 
-One canary hit = 10 (flagged, below 25); a canary hit plus a burst of 404s climbs past 25 → a `limen:deny:*`
+One canary hit = 10 (flagged, below 25); a canary hit plus id-enumeration climbs past 25 → a `limen:deny:*`
 entry → the `denylist` guard blocks the caller for `ban_ttl_s`. In an async app pass an `AsyncStore` (the
 observer's `observe_async` awaits it). Pair with a `robots.txt` Disallow on canary paths so good crawlers never
 score. Keys on account when known, else the trusted IP (bound `ban_ttl_s` for IP bans — addresses get reused).
+
+**Feeding it from per-request behavioral guards.** `timing` and `sequence_anomaly` fire on EVERY request of a
+steady client, so left unchecked their weight would pile up and ban a legitimate poller or health check. List
+them in `once_per_window_guards` and each contributes its weight **at most once per window** — a lone
+metronomic caller tops out at that one weight (keep the sum of the once-per-window weights a legit client could
+trip *below* `threshold`) and is never banned, while a genuinely hostile combination in one window still
+crosses. Per-hit guards like `honeytoken` are left OUT of the set so repeated canary hits still accumulate. As
+a second layer, scope the guards themselves so your own traffic is never even judged:
+`Timing(exempt_prefixes=("/api/health", "/api/v1/"))` and `SequenceAnomaly(exempt_prefixes=("/api/v1/",))`.
 
 ## Build a registry from your own config (admin-editable limits)
 

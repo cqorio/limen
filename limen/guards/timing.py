@@ -26,6 +26,9 @@ EXAMPLE
 TUNING
     ``max_stdev_s``: raise to catch jittery bots (more false positives), lower to only flag the metronomic.
     ``samples``: more samples = higher confidence, slower to trip. ``window_s``: how long the history lives.
+    ``exempt_prefixes``: paths whose steady rhythm is legitimate and expected (health checks, first-party
+    polling endpoints, an API surface metered elsewhere) — a request under one is neither recorded nor judged,
+    EMPTY by default; set them for YOUR app so your own pollers do not look like a bot.
 
 FALSE POSITIVES / WHY SHADOW-FIRST
     A legitimate poller or a health-check loop is also metronomic, so default mode is SHADOW: watch, confirm
@@ -61,18 +64,25 @@ class Timing(Guard):
         max_stdev_s: float = 0.5,
         window_s: int = 300,
         action: Action = Action.ALERT,
+        exempt_prefixes: tuple[str, ...] = (),
     ) -> None:
         self.samples = samples
         self.max_stdev_s = max_stdev_s
         self.window_s = window_s
         self.action = action
+        self.exempt_prefixes = exempt_prefixes
+
+    def _skip(self, ctx: RequestContext) -> bool:
+        return (
+            not ctx.is_pre_request
+            or (ctx.account_id or ctx.ip) is None
+            or (bool(self.exempt_prefixes) and self.under_any(ctx.path, self.exempt_prefixes))
+        )
 
     def evaluate(self, ctx: RequestContext, store: Store) -> Signal | None:
-        if not ctx.is_pre_request:
+        if self._skip(ctx):
             return None
         caller = ctx.account_id or ctx.ip
-        if caller is None:
-            return None
         key = f"limen:timing:{caller}"
         raw = store.get_str(key)
         history = json.loads(raw) if raw else []
@@ -82,11 +92,9 @@ class Timing(Guard):
         return self._decide(history)
 
     async def evaluate_async(self, ctx: RequestContext, store: AsyncStore) -> Signal | None:
-        if not ctx.is_pre_request:
+        if self._skip(ctx):
             return None
         caller = ctx.account_id or ctx.ip
-        if caller is None:
-            return None
         key = f"limen:timing:{caller}"
         raw = await store.get_str(key)
         history = json.loads(raw) if raw else []

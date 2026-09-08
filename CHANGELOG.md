@@ -6,6 +6,29 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-08
+
+Make `ReputationObserver` safe to feed from per-request behavioral guards, and let `Timing` be path-scoped.
+Without this, a guard that fires on EVERY request of a steady client (`timing`, `sequence_anomaly`) piled its
+weight into a score that never decayed, so any metronomic legitimate caller (a health check, a polling UI, an
+uptime monitor) eventually crossed the ban threshold. Closes #10.
+
+### Added
+- **`ReputationObserver(once_per_window_guards=...)`** — guards named here contribute their weight **at most
+  once per window per caller** (tracked by a `…:seen:<guard>:<bucket>` marker), so a per-request behavioral
+  guard adds one weight per window instead of one per request. Keep the sum of the once-per-window weights a
+  legitimate client could trip below `threshold` and such a client is provably never banned.
+- **`Timing(exempt_prefixes=...)`** — paths whose steady rhythm is legitimate (health checks, first-party
+  poll endpoints, an API surface metered elsewhere) are neither recorded nor judged. Mirrors
+  `SequenceAnomaly.exempt_prefixes`.
+
+### Changed
+- `ReputationObserver` now keeps the score **per fixed window** (`limen:rep:<kind>:<id>:<bucket>`, TTL
+  `window_s`) instead of one sliding key whose TTL reset on every write. The old key never decayed under
+  sustained firing; the bucketed key starts fresh each window and a quiet caller simply ages out. The ban key
+  (`limen:deny:<kind>:<id>`) is unchanged. Default behavior (empty `once_per_window_guards`) is otherwise as
+  before: every guard contributes per hit.
+
 ## [1.3.0] - 2026-09-08
 
 Async observers + a bundled **`ReputationObserver`** for risk accumulation → auto-ban, and the THROTTLE docs
