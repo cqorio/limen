@@ -17,9 +17,9 @@ EXAMPLE
     >>> from limen.core.types import RequestContext, Action
     >>> g = Denylist(accounts=("banned-1",), ips=("6.6.6.6",))
     >>> g.evaluate(RequestContext(method="GET", path="/x", account_id="banned-1"), MemoryStore()).action
-    <Action.BLOCK: 4>
+    <Action.BLOCK: 5>
     >>> g.evaluate(RequestContext(method="GET", path="/x", ip="6.6.6.6"), MemoryStore()).action
-    <Action.BLOCK: 4>
+    <Action.BLOCK: 5>
     >>> g.evaluate(RequestContext(method="GET", path="/x", account_id="ok"), MemoryStore()) is None
     True
 

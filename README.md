@@ -59,7 +59,9 @@ if decision.blocked:
   `Identity`, plus `Observer` (decision sink), `Verifier` (challenge), `Geo` (region lookup). Guards keyed on
   IP self-disable when there is no trusted IP, so per-account rules keep working without a WAF in front.
 
-**Actions**, least to most severe: `ALLOW < ALERT < TARPIT < CHALLENGE < BLOCK`.
+**Actions**, least to most severe: `ALLOW < ALERT < TARPIT < CHALLENGE < THROTTLE < BLOCK`. At the HTTP edge
+the FastAPI middleware serves `THROTTLE` (a tripped rate limit) as `429` + `Retry-After`, `BLOCK` as `403`, and
+`CHALLENGE` as `401`. `RateLimit` defaults to `THROTTLE`.
 
 ## Bundled guards
 

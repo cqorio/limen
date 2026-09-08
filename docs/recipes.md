@@ -17,7 +17,7 @@ from limen.adapters import MemoryStore   # or RedisStore across workers
 ```python
 from limen.guards.rate_limit import RateLimit, by_ip
 reg = Registry()
-reg.register(RateLimit(name="login_ip", key=by_ip, limit=10, window_s=60, action=Action.BLOCK, fail_closed=True))
+reg.register(RateLimit(name="login_ip", key=by_ip, limit=10, window_s=60, fail_closed=True))  # default action THROTTLE → 429
 limen = Limen(MemoryStore(), registry=reg)
 ```
 

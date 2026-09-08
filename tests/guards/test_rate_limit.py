@@ -14,7 +14,7 @@ def test_fires_over_limit_per_ip():
     s = MemoryStore()
     r = _req(ip="1.1.1.1")
     assert [g.evaluate(r, s) for _ in range(3)] == [None, None, None]
-    assert g.evaluate(r, s).action is Action.BLOCK  # the 4th trips
+    assert g.evaluate(r, s).action is Action.THROTTLE  # the 4th trips (429 at the edge)
 
 
 def test_none_key_self_disables():

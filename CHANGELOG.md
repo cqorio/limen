@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-08
+
+A dedicated **throttle** action so a tripped rate limit maps to `429 Too Many Requests` (with `Retry-After`)
+instead of `403 Forbidden`, matching the near-universal HTTP rate-limit contract. Closes #5.
+
+### Added
+- **`Action.THROTTLE`** — a retryable rejection ("the caller is going too fast"), ordered between `CHALLENGE`
+  and `BLOCK` so a hard `BLOCK` (e.g. a denylist) still wins when both fire.
+- **`LimenMiddleware`** serves `THROTTLE` as `429` with a `Retry-After` header; new `retry_after` constructor
+  argument (default 60s). `BLOCK` → `403` and `CHALLENGE` → `401` are unchanged. The `@limen/proxy` JS
+  `applyDecision` mirrors the same mapping.
+
+### Changed
+- **`RateLimit` now defaults to `Action.THROTTLE`** (was `BLOCK`), so a rate-limit bucket returns `429` out of
+  the box. Pass `action=Action.BLOCK` to keep the old `403` behaviour for a given bucket.
+- `Action.BLOCK` is now the integer `5` (was `4`) because `THROTTLE` takes `4`. Compare by name (`Action.BLOCK`),
+  never by the raw int; nothing in the library compares the numeric value.
+
 ## [1.1.0] - 2026-09-08
 
 Native **async** support, so Limen runs in async apps (FastAPI on `redis.asyncio`) without blocking the event

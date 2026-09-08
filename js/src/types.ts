@@ -6,7 +6,8 @@ export const Action = {
   ALERT: 1,
   TARPIT: 2,
   CHALLENGE: 3,
-  BLOCK: 4,
+  THROTTLE: 4,
+  BLOCK: 5,
 } as const;
 export type Action = (typeof Action)[keyof typeof Action];
 

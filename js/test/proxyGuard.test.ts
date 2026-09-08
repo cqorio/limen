@@ -22,8 +22,9 @@ t("applyDecision: ALLOW/ALERT proceed (null)", () => {
   assert.equal(applyDecision(decision(Action.ALERT)), null);
 });
 
-t("applyDecision: BLOCK -> 403, CHALLENGE -> 401", () => {
+t("applyDecision: BLOCK -> 403, THROTTLE -> 429, CHALLENGE -> 401", () => {
   assert.equal(applyDecision(decision(Action.BLOCK))?.status, 403);
+  assert.equal(applyDecision(decision(Action.THROTTLE))?.status, 429);
   assert.equal(applyDecision(decision(Action.CHALLENGE))?.status, 401);
 });
 

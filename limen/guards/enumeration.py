@@ -20,7 +20,7 @@ EXAMPLE
     >>> for i in range(4):   # 4 not-found responses recorded in the POST-response phase
     ...     _ = g.evaluate(RequestContext(method="GET", path=f"/api/items/{i}", status=404, ip="6.6.6.6"), store)
     >>> g.evaluate(RequestContext(method="GET", path="/api/items/x", ip="6.6.6.6"), store).action
-    <Action.BLOCK: 4>
+    <Action.BLOCK: 5>
 
 TUNING
     ``limit`` / ``window_s``: how many 404s in how long is "guessing" (lower = stricter). ``path_prefixes``:

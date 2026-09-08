@@ -37,7 +37,7 @@ def test_rate_limit_counts_on_async_path():
 
     r1, r2, r3 = asyncio.run(run())
     assert r1 is None and r2 is None      # first 2 under the limit → counted, not blocked
-    assert r3.action is Action.BLOCK      # 3rd trips (proves the async store actually counted)
+    assert r3.action is Action.THROTTLE   # 3rd trips (proves the async store actually counted)
 
 
 def test_pure_compute_guard_delegates_on_async_path():

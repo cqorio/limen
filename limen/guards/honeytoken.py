@@ -16,7 +16,7 @@ EXAMPLE
     >>> from limen.core.types import RequestContext, Action
     >>> g = Honeytoken(paths=("/api/__canary_9f3a__",))
     >>> g.evaluate(RequestContext(method="GET", path="/api/__canary_9f3a__", ip="6.6.6.6"), MemoryStore()).action
-    <Action.BLOCK: 4>
+    <Action.BLOCK: 5>
     >>> g.evaluate(RequestContext(method="GET", path="/api/real", ip="6.6.6.6"), MemoryStore()) is None
     True
 

@@ -33,7 +33,8 @@ class Action(IntEnum):
     ALERT = 1      # let it through, but flag it (non-blocking)
     TARPIT = 2     # let it through slowly (add latency)
     CHALLENGE = 3  # require a human/interactive check (e.g. a captcha)
-    BLOCK = 4      # refuse the request
+    THROTTLE = 4   # reject, but retryable — the caller is going too fast (rate limited)
+    BLOCK = 5      # refuse the request outright
 
 
 @dataclass(frozen=True, slots=True)

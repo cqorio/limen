@@ -59,7 +59,8 @@ construct without it); ship its own test (inject a fake so it needs no dependenc
    for adapters wrapping what you already own (`Store`, `ClientIP`, `Identity`, `Verifier`, `Geo`).
 2. **Two registries** — the default `REGISTRY` (zero-config starter set, used by `Limen(store)`) vs a custom
    `Registry` the consumer passes (`registry=`), which replaces it. Real multi-bucket consumers build their own.
-3. **Aggregation** — actions by `max` (ALLOW<ALERT<TARPIT<CHALLENGE<BLOCK); optional `score_thresholds` combine
+3. **Aggregation** — actions by `max` (ALLOW<ALERT<TARPIT<CHALLENGE<THROTTLE<BLOCK; THROTTLE→429, BLOCK→403 at
+   the FastAPI edge); optional `score_thresholds` combine
    weak ENFORCE scores; SHADOW never changes the action.
 4. **Parametric guards are NOT auto-registered** — `rate_limit` has no meaningful inert default, so it ships the
    class + key builders and is instantiated per-bucket by the consumer; only guards with a safe zero-config
