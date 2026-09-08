@@ -7,6 +7,7 @@ CONSTRUCT (the default client), and the middleware to import."""
 from .memory_store import AsyncMemoryStore, MemoryStore
 from .observers import JsonlObserver, LoggingObserver
 from .prometheus import PrometheusObserver  # importable; raises on construction without the prometheus extra
+from .reputation import ReputationObserver  # zero-dep: accumulates a per-caller score in your store -> auto-ban
 from .sentry import SentryObserver  # importable; raises on construction without the sentry extra
 from .turnstile import TurnstileVerifier  # stdlib-only (urllib), always available
 
@@ -15,6 +16,7 @@ __all__ = [
     "AsyncMemoryStore",
     "LoggingObserver",
     "JsonlObserver",
+    "ReputationObserver",
     "TurnstileVerifier",
     "PrometheusObserver",
     "SentryObserver",

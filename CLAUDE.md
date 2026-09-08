@@ -15,8 +15,9 @@ mode. It is an **open-source library** — lightweight, fast, intuitive, well-do
   `sequence_anomaly`, `sec_fetch`, `timing`, `honeytoken`, `watermark`, `denylist`, `impossible_travel`,
   `step_up`, and the class `rate_limit` (NOT auto-registered — see decision 4).
 - `limen/adapters/` — `MemoryStore` (built in), `RedisStore` (`[redis]`), `LimenMiddleware` (`[fastapi]`),
-  observers `LoggingObserver`/`JsonlObserver` (built in) · `PrometheusObserver` (`[prometheus]`) ·
-  `SentryObserver` (`[sentry]`), and `TurnstileVerifier` (stdlib).
+  observers `LoggingObserver`/`JsonlObserver` (built in) · `ReputationObserver` (built in: per-caller risk
+  accumulation → auto-ban) · `PrometheusObserver` (`[prometheus]`) · `SentryObserver` (`[sentry]`), and
+  `TurnstileVerifier` (stdlib).
 - `js/` — `@limen/proxy`, the thin Next.js/edge TS adapter.
 
 ## Adding a guard (inherit these)
@@ -34,9 +35,12 @@ Register with `@register` ONLY if it has a safe inert/active zero-config default
 
 ## Adding an observer (inherit these)
 Subclass `Observer(ABC)`, implement `observe(ctx, decision)`, reuse `self.event(...)`. Set `respects_relevance`
-(False ONLY for a metrics/always-on sink) and override `observe_latency` only if you record it. Cheap, never
-raises, never logs secret values. A heavy dep goes behind an extra and is lazy-imported (raise a clear error on
-construct without it); ship its own test (inject a fake so it needs no dependency).
+(False ONLY for a metrics/always-on sink) and override `observe_latency` only if you record it. **If it touches
+an async `Store`, ALSO implement `async def observe_async(ctx, decision)` awaiting it** — the base
+`observe_async` delegates to sync `observe`, so a store-backed sink that omits it blocks the event loop on the
+`evaluate_async` path (mirrors the guard `evaluate`/`evaluate_async` split). Cheap, never raises, never logs
+secret values. A heavy dep goes behind an extra and is lazy-imported (raise a clear error on construct without
+it); ship its own test (inject a fake so it needs no dependency).
 
 ## Non-negotiables (a review-blocker to break any of these)
 1. **Zero required deps in the core.** stdlib only; any runtime dep goes behind an optional extra.

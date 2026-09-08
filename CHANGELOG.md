@@ -6,6 +6,26 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-08
+
+Async observers + a bundled **`ReputationObserver`** for risk accumulation → auto-ban, and the THROTTLE docs
+the v1.2.0 PR missed. Additive and backward-compatible. Closes #8.
+
+### Added
+- **Async observer path**: `Observer.observe_async` (base default delegates to sync `observe`, so every
+  existing sink is unchanged), awaited by the facade on `evaluate_async` — an `AsyncStore`-backed sink no longer
+  blocks the event loop. Mirrors the v1.1.0 guard `evaluate`/`evaluate_async` split.
+- **`ReputationObserver`** (zero-dep): accumulates a per-caller, decaying risk score in your store (a weight per
+  firing guard) and writes a `denylist` entry when the total crosses a threshold — combining signals ACROSS
+  requests (repeat offenders) where `score_thresholds` combines them within one. Crawler-safe (a one-off hit
+  stays below the threshold and decays); enforcement stays with the store-backed `denylist` guard.
+
+### Docs
+- Documented `THROTTLE` → 429 in `docs/integration.md` and `examples/nextjs_proxy.md` (the v1.2.0 THROTTLE PR
+  updated README/CLAUDE/CHANGELOG/recipes but missed these two).
+- `ReputationObserver` recipe + observer-list entries across README, `docs/integration.md`, `docs/recipes.md`,
+  and CLAUDE.md; async-observer note added to the "adding an observer" convention.
+
 ## [1.2.0] - 2026-09-08
 
 A dedicated **throttle** action so a tripped rate limit maps to `429 Too Many Requests` (with `Retry-After`)

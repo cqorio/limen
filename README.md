@@ -122,7 +122,10 @@ blocked". You mount and protect the `/metrics` endpoint yourself. See `examples/
 Every sink subclasses **`Observer`** (an ABC, like a `Guard` or `logging.Handler`): implement `observe(ctx,
 decision)`, optionally set `respects_relevance` / override `observe_latency`, reuse `self.event(...)`.
 `SentryObserver` (`limen[sentry]`) is one bundled example; a Datadog/Slack/webhook sink is a few lines the same
-way (see `docs/integration.md`, "Write your own observer").
+way (see `docs/integration.md`, "Write your own observer"). In an async app a sink can implement `observe_async`
+(awaited on `evaluate_async`); the default delegates to `observe`, so existing sinks are unchanged.
+`ReputationObserver` (zero-dep) uses this to accumulate a per-caller risk score in your store and auto-ban
+(write a `denylist` entry) when *repeated or combined* abuse crosses a threshold, while a one-off hit only flags.
 
 ## Challenge (human verification), provider-agnostic
 
@@ -149,7 +152,7 @@ troubleshooting. **[docs/recipes.md](docs/recipes.md)** shows how to express com
   `await limen.evaluate_async(ctx)` / `record_async(ctx)` (never blocks the event loop). `LimenMiddleware` awaits
   them automatically, and awaits async `client_ip` / `identity` ports. Sync API is unchanged.
 - `LimenMiddleware` — FastAPI/Starlette; enforces pre-request, records post-response, orchestrates challenge (`limen[fastapi]`).
-- `LoggingObserver` / `JsonlObserver` — decision sinks (zero-dep). `PrometheusObserver` — metrics (`limen[prometheus]`). `SentryObserver` — alerts (`limen[sentry]`). All subclass `Observer`.
+- `LoggingObserver` / `JsonlObserver` — decision sinks (zero-dep). `ReputationObserver` — per-caller risk accumulation → auto-ban (zero-dep). `PrometheusObserver` — metrics (`limen[prometheus]`). `SentryObserver` — alerts (`limen[sentry]`). All subclass `Observer`.
 - `TurnstileVerifier` — a bundled `Verifier` (stdlib `urllib`, no extra).
 - `@limen/proxy` (in `js/`) — Next.js/edge helper: `buildContext(request)` + `applyDecision(decision)`.
 

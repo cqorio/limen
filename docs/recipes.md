@@ -112,7 +112,27 @@ limen = Limen(MemoryStore(), config=cfg, registry=reg)
 ```
 
 Give your guards a `score=` on their `Signal`; three weak signals summing past 15 → CHALLENGE, though none
-alone would.
+alone would. (The risk spine combines guards *within one request*; to combine them *across* requests — repeat
+offenders — use `ReputationObserver`, next.)
+
+## Auto-ban repeat offenders (reputation across requests)
+
+The risk spine is per-request; `ReputationObserver` accumulates a decaying per-caller score ACROSS requests and
+writes a `denylist` entry when it crosses a threshold, so *repeated or combined* abuse auto-bans while a one-off
+hit only flags (crawler-safe). It records + escalates; the store-backed `denylist` GUARD does the blocking, so
+keep denylist ENFORCE.
+
+```python
+from limen.adapters import ReputationObserver
+rep = ReputationObserver(store, weights={"honeytoken": 10, "enumeration": 5, "sequence_anomaly": 5},
+                         threshold=25, window_s=3600, ban_ttl_s=3600)
+limen = Limen(store, config={"denylist": Mode.ENFORCE}, observer=[LoggingObserver(), rep])
+```
+
+One canary hit = 10 (flagged, below 25); a canary hit plus a burst of 404s climbs past 25 → a `limen:deny:*`
+entry → the `denylist` guard blocks the caller for `ban_ttl_s`. In an async app pass an `AsyncStore` (the
+observer's `observe_async` awaits it). Pair with a `robots.txt` Disallow on canary paths so good crawlers never
+score. Keys on account when known, else the trusted IP (bound `ban_ttl_s` for IP bans — addresses get reused).
 
 ## Build a registry from your own config (admin-editable limits)
 

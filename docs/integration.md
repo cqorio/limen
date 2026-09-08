@@ -76,8 +76,9 @@ from limen.adapters import LimenMiddleware
 app.add_middleware(LimenMiddleware, limen=limen,
                    client_ip=ClientIP(), identity=Identity(), tarpit_seconds=1.0)
 ```
-The middleware evaluates **pre-request** (BLOCK→403, CHALLENGE→401, TARPIT→`tarpit_seconds` delay then serve)
-and **records post-response** (feeds response statuses to guards like `enumeration` that count 404s). Every
+The middleware evaluates **pre-request** (BLOCK→403, THROTTLE→429 + `Retry-After`, CHALLENGE→401,
+TARPIT→`tarpit_seconds` delay then serve) and **records post-response** (feeds response statuses to guards like
+`enumeration` that count 404s). Every
 route is covered — no per-endpoint code. (`examples/fastapi_app.py` is this, runnable.)
 
 ---
@@ -130,6 +131,18 @@ limen = Limen(store, observer=[LoggingObserver(), JsonlObserver("limen-audit.jso
   `limen_decisions_total{action,guard}` gives "% blocked" = `block / sum(all)`.
 - `SentryObserver` (`limen[sentry]`) — reports serious decisions (>= `min_action`, default BLOCK) to Sentry as
   tagged messages, for alerting. Quiet by design (a LOG sink + the `min_action` floor).
+- `ReputationObserver` (zero-dep) — accumulates a per-caller risk score across requests (a weight per firing
+  guard, decaying over `window_s`) and writes a `denylist` entry when it crosses `threshold`, so *repeated or
+  combined* abuse AUTO-BANS while a one-off hit only flags. Async-aware (`observe_async`). It records + escalates;
+  the store-backed `denylist` GUARD reads what it wrote and does the blocking, so keep denylist ENFORCE:
+  ```python
+  from limen.adapters import ReputationObserver
+  rep = ReputationObserver(store, weights={"honeytoken": 10, "enumeration": 5, "sequence_anomaly": 5},
+                           threshold=25, window_s=3600, ban_ttl_s=3600)
+  limen = Limen(store, config={"denylist": Mode.ENFORCE}, observer=[LoggingObserver(), rep])
+  # one canary hit = 10 (flagged, below 25); canary + repeated 404s climbs past 25 → denylist entry → banned.
+  # Crawler-safe: a single stray hit never reaches the threshold and decays; pair with a robots.txt Disallow.
+  ```
 
 `log_relevance` is ONE global switch for the LOG sinks: `"relevant_only"` (default — skip plain ALLOWs),
 `"all"`, or `"off"`. The metrics sink ignores it and always counts. Observers never break a request: a sink that
@@ -207,7 +220,7 @@ Keep **one** engine (the backend); the edge just applies the backend's `Decision
 import { buildContext, applyDecision } from "@limen/proxy";
 const ctx = buildContext(request, { ip, account_id, auth_kind });
 const decision = await askBackendLimen(ctx);   // a small internal endpoint that calls limen.evaluate
-const early = applyDecision(decision);          // 403 on BLOCK, 401 on CHALLENGE, else null
+const early = applyDecision(decision);          // 403 on BLOCK, 429 on THROTTLE, 401 on CHALLENGE, else null
 if (early) return early;
 ```
 See `examples/nextjs_proxy.md`.
