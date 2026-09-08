@@ -22,6 +22,8 @@ export function buildContext(request: Request, extra: Partial<RequestContext> = 
 // (add latency yourself if you want it); ALERT proceeds (it is a flag, not a block).
 export function applyDecision(d: Decision): Response | null {
   if (d.action >= Action.BLOCK) return new Response("Forbidden", { status: 403 });
+  // 429 matches the backend middleware: a THROTTLE is a tripped rate limit ("slow down, retry").
+  if (d.action === Action.THROTTLE) return new Response("Too Many Requests", { status: 429 });
   // 401 matches the backend middleware: a CHALLENGE means "verify to proceed".
   if (d.action === Action.CHALLENGE) return new Response("Verification required", { status: 401 });
   return null;

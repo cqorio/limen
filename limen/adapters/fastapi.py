@@ -14,6 +14,10 @@ Async: construct ``Limen`` with an ``AsyncRedisStore`` (or ``AsyncMemoryStore``)
 async engine and store automatically (no event-loop blocking). ``client_ip`` / ``identity`` ports may be sync
 or async — an async ``resolve`` is awaited (so a coroutine DB lookup for the account works).
 
+Decision → HTTP status: ``BLOCK`` → ``403``, ``THROTTLE`` (a tripped rate limit) → ``429`` with a
+``Retry-After: <retry_after>`` header, ``CHALLENGE`` → ``401`` (see the challenge flow below), ``TARPIT`` →
+served after ``tarpit_seconds``, ``ALLOW``/``ALERT`` → passed through.
+
 Challenge flow (optional): pass a ``verifier`` (any ``Verifier`` — e.g. ``TurnstileVerifier``). On a CHALLENGE
 decision the middleware serves 401 unless the caller has a recent passed-marker; the caller solves the
 challenge and POSTs the token to ``verify_path`` (default ``/_limen/verify``), which verifies it and writes the
@@ -56,6 +60,7 @@ class LimenMiddleware(BaseHTTPMiddleware):
         client_ip: Any = None,
         identity: Any = None,
         tarpit_seconds: float = 1.0,
+        retry_after: int = 60,
         client_ip_trusted: bool = False,
         verifier: Any = None,
         verify_path: str = "/_limen/verify",
@@ -69,6 +74,9 @@ class LimenMiddleware(BaseHTTPMiddleware):
         self.client_ip = client_ip
         self.identity = identity
         self.tarpit_seconds = tarpit_seconds
+        # Retry-After (seconds) sent with a 429 on THROTTLE.
+        # ponytail: one value for every bucket; per-bucket would need the window carried on the Decision.
+        self.retry_after = retry_after
         # Assert True ONLY behind a locked edge that sets the client-IP header AND a proxy that strips
         # spoofable copies. It stamps ctx.ip_trusted, which an IP-based `exempt` must gate on. Default False,
         # so an IP-based exempt is inert until you deliberately vouch for your IP source.
@@ -157,6 +165,10 @@ class LimenMiddleware(BaseHTTPMiddleware):
 
         if action >= Action.BLOCK:
             return PlainTextResponse("Forbidden", status_code=403)
+        if action == Action.THROTTLE:
+            return PlainTextResponse(
+                "Too Many Requests", status_code=429, headers={"Retry-After": str(self.retry_after)}
+            )
         if action == Action.CHALLENGE:
             return PlainTextResponse("Verification required", status_code=401)
         if action == Action.TARPIT and self.tarpit_seconds > 0:

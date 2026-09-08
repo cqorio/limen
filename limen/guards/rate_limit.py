@@ -25,15 +25,16 @@ EXAMPLE
     >>> r = RequestContext(method="POST", path="/login", ip="1.2.3.4")
     >>> [g.evaluate(r, store) is None for _ in range(3)]                  # first 3 pass
     [True, True, True]
-    >>> g.evaluate(r, store).action is Action.BLOCK                       # the 4th trips
+    >>> g.evaluate(r, store).action is Action.THROTTLE                    # the 4th trips
     True
     >>> g.evaluate(RequestContext(method="POST", path="/login"), store) is None  # no IP -> skipped
     True
 
 TUNING
     ``limit`` / ``window_s``: the cap. Too low → false positives on power users; too high → useless. Start
-    generous, watch, tighten. ``action``: ``BLOCK`` to refuse, ``TARPIT`` to serve slowly (good for authed
-    budgets), ``CHALLENGE`` to captcha. ``fail_closed``: default False (fail OPEN if the store dies); set True
+    generous, watch, tighten. ``action``: ``THROTTLE`` (the default — a retryable "slow down", i.e. 429 at the
+    HTTP edge), ``BLOCK`` to refuse outright, ``TARPIT`` to serve slowly (good for authed budgets), ``CHALLENGE``
+    to captcha. ``fail_closed``: default False (fail OPEN if the store dies); set True
     on a security-critical bucket (login, signup) so a store outage denies instead of waving everyone through.
 
 FALSE POSITIVES
@@ -110,7 +111,7 @@ class RateLimit(Guard):
         key: KeyFn,
         limit: int,
         window_s: int,
-        action: Action = Action.BLOCK,
+        action: Action = Action.THROTTLE,
         fail_closed: bool = False,
     ) -> None:
         self.name = name

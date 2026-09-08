@@ -9,6 +9,7 @@ from starlette.testclient import TestClient  # noqa: E402
 
 from limen import Action, Guard, Limen, Mode, Registry, Signal  # noqa: E402
 from limen.adapters import AsyncMemoryStore, LimenMiddleware, MemoryStore  # noqa: E402
+from limen.guards.rate_limit import RateLimit, by_ip  # noqa: E402
 from limen.guards.step_up import StepUp  # noqa: E402
 
 
@@ -129,3 +130,23 @@ def test_async_identity_resolves_account_to_a_string():
     """Plan (d): an async Identity port is awaited, so account_id is a real string (the guard fires on "u1")."""
     client = _client(guard=AccountChallenge(), identity=AsyncIdentity(), async_store=True)
     assert client.get("/protected").status_code == 401   # would be 200 if account_id were an unawaited coroutine
+
+
+# --- v1.2.0: a tripped RateLimit is a THROTTLE, served as 429 + Retry-After (NOT 403) ---
+
+def test_rate_limit_trips_429_with_retry_after():
+    """A RateLimit bucket that trips emits Action.THROTTLE, which the middleware serves as 429 + Retry-After
+    (a retryable "slow down"), not a 403. TestClient's socket peer is the trusted IP the bucket keys on."""
+    client = _client(guard=RateLimit(name="t", key=by_ip, limit=2, window_s=60), retry_after=42)
+    assert client.get("/protected").status_code == 200   # 1st under the limit (record phase never re-counts)
+    assert client.get("/protected").status_code == 200   # 2nd under the limit
+    resp = client.get("/protected")                       # 3rd trips
+    assert resp.status_code == 429
+    assert resp.headers["Retry-After"] == "42"
+
+
+def test_rate_limit_trips_429_on_async_store():
+    """Same throttle mapping over an AsyncStore (evaluate_async path)."""
+    client = _client(guard=RateLimit(name="t", key=by_ip, limit=1, window_s=60), async_store=True)
+    assert client.get("/protected").status_code == 200
+    assert client.get("/protected").status_code == 429
