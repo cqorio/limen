@@ -39,6 +39,12 @@ class Observer(ABC):
         """Handle one decision. Must be cheap (it is on the request path) and should not raise (the facade
         guards the call, but a raising sink is a bug). Never log secret values."""
 
+    async def observe_async(self, ctx: RequestContext, decision: Decision) -> None:
+        """Async twin of ``observe``, awaited on ``Limen.evaluate_async``. The default DELEGATES to the sync
+        ``observe`` so every existing sink works unchanged; override it in a sink that must await (e.g. an
+        ``AsyncStore``-backed reputation accumulator) so it never blocks the event loop."""
+        self.observe(ctx, decision)
+
     def observe_latency(self, seconds: float) -> None:
         """The facade calls this with the per-request evaluate time. No-op by default; override it in a metrics
         sink to record a latency histogram."""

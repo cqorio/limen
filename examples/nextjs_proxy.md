@@ -17,7 +17,7 @@ export async function proxy(request: Request) {
     body: JSON.stringify(ctx),
   }).then((r) => r.json());
 
-  const early = applyDecision(decision); // 403 on BLOCK, 401 on CHALLENGE, else null
+  const early = applyDecision(decision); // 403 on BLOCK, 429 on THROTTLE, 401 on CHALLENGE, else null
   if (early) return early;
 
   return forwardToBackend(request);

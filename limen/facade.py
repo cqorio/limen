@@ -103,7 +103,7 @@ class Limen:
         """
         start = time.perf_counter()
         decision = await self._engine.evaluate_async(ctx, self._store)
-        self._emit(ctx, decision, time.perf_counter() - start)
+        await self._emit_async(ctx, decision, time.perf_counter() - start)
         return decision
 
     async def record_async(self, ctx: RequestContext) -> None:
@@ -111,19 +111,41 @@ class Limen:
         counters. Does NOT fire observers."""
         await self._engine.evaluate_async(ctx, self._store)
 
+    def _skip(self, obs: Observer, relevant: bool) -> bool:
+        """Whether the global ``log_relevance`` switch silences this sink for this decision. A metrics sink
+        (``respects_relevance=False``) is never silenced; the shared rule lives here so the sync and async
+        emit paths cannot drift."""
+        if not obs.respects_relevance:
+            return False
+        return self._log_relevance == "off" or (self._log_relevance == "relevant_only" and not relevant)
+
     def _emit(self, ctx: RequestContext, decision: Decision, elapsed: float) -> None:
         if not self._observers:
             return
         relevant = decision.action != Action.ALLOW or bool(decision.shadow_reasons)
         for obs in self._observers:
             # respects_relevance / observe_latency are guaranteed by the Observer base — no duck-typing needed.
-            if obs.respects_relevance:
-                if self._log_relevance == "off":
-                    continue
-                if self._log_relevance == "relevant_only" and not relevant:
-                    continue
+            if self._skip(obs, relevant):
+                continue
             try:
                 obs.observe(ctx, decision)
+                obs.observe_latency(elapsed)
+            except Exception:  # an observer must never break request handling (fail-open)
+                log.warning("limen observer %r failed; ignoring", type(obs).__name__, exc_info=True)
+
+    async def _emit_async(self, ctx: RequestContext, decision: Decision, elapsed: float) -> None:
+        """Async twin of ``_emit`` for ``evaluate_async``: awaits each sink's ``observe_async`` so an
+        AsyncStore-backed sink (e.g. ``ReputationObserver``) never blocks the event loop. A sink that did not
+        override ``observe_async`` runs its sync ``observe`` via the base default, so existing sinks are
+        unaffected."""
+        if not self._observers:
+            return
+        relevant = decision.action != Action.ALLOW or bool(decision.shadow_reasons)
+        for obs in self._observers:
+            if self._skip(obs, relevant):
+                continue
+            try:
+                await obs.observe_async(ctx, decision)
                 obs.observe_latency(elapsed)
             except Exception:  # an observer must never break request handling (fail-open)
                 log.warning("limen observer %r failed; ignoring", type(obs).__name__, exc_info=True)
